@@ -1,0 +1,18 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "hooks": {
+    "postToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$TOOL_INPUT\" | grep -q 'session-state.md'; then echo '[SESSION STATE SAVED]'; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
