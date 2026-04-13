@@ -12,6 +12,32 @@ Claude Code reads `CLAUDE.md` files at every directory level for context, uses b
 /session new my-campaign
 ```
 
+Or just tell the DM what you want:
+
+```
+Alright, DM! Let's play a nice, contained one shot DnD scenario. It should be rich
+and interesting. I'll be your player. You can work on scenario planning while you help
+me with character creation. Dealer's choice in all other elements! Let's go :)
+```
+
+That's the exact prompt that produced [The Vanishing Tide](#the-vanishing-tide-one-shot) — a complete mystery/horror one-shot with four acts, six NPCs, a morally complex antagonist, and a branching finale with four possible endings. No setup required beyond cloning the repo and opening Claude Code.
+
+## How to Play
+
+This is a role-playing game, not a video game. There's no winning — there's a world that responds to what you do in it.
+
+**Talk to people.** The NPCs have personalities, secrets, and agendas. Ask questions. Listen to what they say and what they don't say. Buy someone a drink. Fix their broken railing. The best information comes from trust, not dice rolls.
+
+**Describe what you do, not what you want to happen.** Say "I press my ear to the door and listen" instead of "I roll Perception." Say "I tell Brine about the claw marks and ask if he's seen anything like them" instead of "I persuade Brine." The DM will call for rolls when the mechanics matter.
+
+**Explore.** Poke at things that seem odd. Read the notice board. Check the graveyard. Look at what's under the floorboards. The world is full of details that reward curiosity.
+
+**Make choices that feel right for your character**, not choices that are mechanically optimal. A halfling ranger with a flaw about never getting attached might still sprint into a sea cave for a stranger's daughter — and that's the interesting part.
+
+**Fail forward.** Bad rolls don't mean dead ends. A botched Investigation might mean you miss a journal but find something else. The story keeps moving. The DM doesn't let a single die roll stop the narrative — and neither should you.
+
+**Combat is one option, not the default.** You can fight the monster. You can also talk to her. You can also find out why she's weeping and whether she used to be someone the village loved. Some of the best sessions end with zero arrows fired.
+
 ## Directory Structure
 
 ```
@@ -97,6 +123,23 @@ When a campaign is created, it generates a full directory tree tracking:
 - NPC relationships and faction reputation
 - In-game calendar, weather, and time
 - Narrative arcs, plot threads, and DM secrets
+
+## The Vanishing Tide (One-Shot)
+
+The `oneshot` branch contains a complete, played-through adventure — scenario, NPCs, locations, character sheet, session state, and quest log — preserved exactly as it ended. It's a good reference for what the engine produces and how game state is structured on disk.
+
+![Arrival at Salthollow](images/arrival_at_salthollow.jpeg)
+
+A mystery/horror one-shot set in Salthollow, a fog-shrouded coastal village on the Sword Coast. Villagers vanish one by one during storms, taken by something from the sea. The player — Faradin Underbough, a Lightfoot Halfling Ranger and wandering tradesman — arrives on a stormy night seeking shelter and unravels a fifteen-year-old tragedy buried beneath the village's guilt.
+
+**Ending achieved: Redemption.** Zero combat. Zero arrows fired. The entire adventure resolved through investigation, empathy, and a fixed banister.
+
+Browse the branch to see the full adventure module, NPC profiles with speech patterns and emotional arcs, detailed location guides, and the complete session log:
+
+```
+git checkout oneshot
+ls games/oneshot/
+```
 
 ## Architecture Inspiration
 
