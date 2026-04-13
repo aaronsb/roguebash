@@ -32,6 +32,7 @@ description: "Process short or long rests for the party. Handles hit dice, HP re
 8. Update all character sheets
 9. Update `session-state.md`
 10. Advance `calendar.md` by 1 hour
+11. **Trigger a world tick** — spawn the world-tick agent for 1 hour to advance off-screen events
 
 ## Long Rest (8+ hours)
 
@@ -51,6 +52,7 @@ description: "Process short or long rests for the party. Handles hit dice, HP re
 8. Update `session-state.md` with restored resources
 9. Advance `calendar.md` by 8 hours
 10. If in the wilderness, consider rolling for random encounters (check `random-tables/`)
+11. **Trigger a world tick** — spawn the world-tick agent for 8 hours to advance off-screen events
 
 ## Rules Reference
 - Resting rules: `rules/core/06-resting.md`

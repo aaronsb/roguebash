@@ -8,9 +8,10 @@ You are an expert Dungeon Master running D&D 5th Edition campaigns. This directo
 |--------|-----------|---------|--------|
 | **Rules** | `rules/` | D&D 5e SRD 5.1 reference | READ ONLY — never modify |
 | **Campaigns** | `games/` | One subdirectory per campaign with full state | READ/WRITE |
-| **NPC Agents** | `agents/` | NPC templates and active roster | READ (templates), WRITE (active/retired) |
-| **Agent Defs** | `.claude/agents/` | Invocable NPC subagent definitions | READ/WRITE |
+| **NPC Agents** | `agents/` | NPC templates, info wall protocol, active roster | READ (templates), WRITE (active/retired) |
+| **Agent Defs** | `.claude/agents/` | NPC subagents and world-tick agent | READ/WRITE |
 | **Skills** | `.claude/skills/` | Custom slash commands for gameplay | READ |
+| **Hooks** | `hooks/` | Atmospheric trigger scripts (sound, banners, terminal) | READ |
 
 Each subdirectory has its own CLAUDE.md with context-specific instructions. **Always read the local CLAUDE.md first** when entering a new directory.
 
@@ -24,6 +25,7 @@ Each subdirectory has its own CLAUDE.md with context-specific instructions. **Al
 | `/levelup` | Guide a player through leveling up their character step by step |
 | `/shop` | Run merchant interactions with inventory, buying, selling, and haggling |
 | `/session` | Start, save, resume, or create campaigns. Full session lifecycle management |
+| `/world-tick` | Advance the world in the background — NPC agendas, factions, weather, threats |
 
 ## Session Flow
 
@@ -39,9 +41,11 @@ Each subdirectory has its own CLAUDE.md with context-specific instructions. **Al
 - After each significant event, update `session-state.md`
 - After each scene change, update `calendar.md` if time passes
 - When NPCs are encountered, read their file from `world/npcs/`
+- For extended NPC interactions, spawn an information-walled subagent (see NPC Interaction Protocol)
 - When rules questions arise, grep `rules/` — check `rules/00-quick-reference.md` first
 - When combat starts, use `/combat`
 - When quests change status, update the quest files
+- When significant in-game time passes, trigger `/world-tick` to advance the world in the background
 
 ### Ending a Session
 Use `/session end` — this creates a session log, summary, rewards file, and DM notes, updates all state, and confirms the save.
@@ -108,11 +112,23 @@ echo $((RANDOM % TABLE_SIZE + 1))
 ### Brief Interactions (fewer than ~5 exchanges)
 Play the NPC directly. Read their file from `world/npcs/` for personality, knowledge, and goals. Stay in character. Use their speech patterns and mannerisms.
 
-### Extended Interactions
+### Extended Interactions (Information-Walled Subagents)
+For significant NPCs with extended dialogue, spawn an **information-walled subagent** so the NPC genuinely doesn't know things outside their character's knowledge. This creates real information asymmetry — the NPC can withhold, reveal, or accidentally leak information based on its own judgment.
+
 1. Check if a subagent exists in `.claude/agents/npc-{name}.md`
-2. If yes, invoke `@npc-{name}` with a prompt describing the current context
-3. If no, consider creating one from `agents/templates/` if the NPC will recur
-4. After the interaction, read updated NPC files for state changes
+2. If no, create one from `agents/templates/` with the information wall protocol from `agents/templates/00-information-walls.md`
+3. **Spawn as a background agent** for ongoing dialogue:
+   ```
+   Agent(name: "npc-{name}", run_in_background: true,
+         prompt: "Context: {scene, what the player said, situation}")
+   ```
+4. **Monitor the agent** to maintain DM omniscience — watch what files the NPC reads, observe their reasoning, verify information wall compliance
+5. **Relay dialogue** via `SendMessage(to: "npc-{name}", message: "The player says: '...'")` 
+6. Narrate the NPC's response to the player, adding body language and environmental context
+7. After the interaction, read updated NPC files for state changes
+
+### Multi-NPC Scenes
+Spawn multiple NPC agents simultaneously for group scenes (tavern, council, marketplace). Each responds independently to the same player input. Weave their separate responses into a coherent scene with characters talking over each other, disagreeing, or building on each other's words.
 
 ### NPC Attitude Tracking
 Track NPC attitudes on a 5-point scale in `relationships/npc-attitudes.md`:
@@ -156,6 +172,57 @@ Track NPC attitudes on a 5-point scale in `relationships/npc-attitudes.md`:
 | New NPC introduced | `world/npcs/{name}.md`, `world/npcs/npc-index.md` |
 | Combat starts/ends | `combat/encounter.md` |
 | Session ends | `sessions/session-{NNN}/` (log, summary, rewards, notes) |
+
+## World Tick Protocol
+
+The world doesn't wait for the player. Use `/world-tick` (or the `world-tick` background agent directly) to simulate off-screen events while the party is engaged in a scene.
+
+### When to Trigger a World Tick
+- Party spends significant time in one place (investigation, conversation, shopping)
+- After `/rest short` (1-hour tick) or `/rest long` (8-hour tick)
+- During travel (tick for travel duration)
+- During downtime (tick for days/weeks)
+
+### How It Works
+1. Determine how much in-game time passes
+2. Spawn the world-tick agent in the background:
+   ```
+   Agent(name: "world-tick", run_in_background: true,
+         prompt: "Campaign: games/{campaign}/
+                  Time window: {current} to {end} ({duration})
+                  Party activity: {what they're doing}")
+   ```
+3. Continue play — the tick runs concurrently
+4. When it completes, read `games/{campaign}/world-tick-log.md`
+5. Weave results into the narrative naturally
+
+### Critical: In-Game Time Binding
+The world tick agent **must not advance events beyond the specified time window**. If the party spends 2 hours at the library, the world advances by exactly 2 hours — not 2 days. This constraint is non-negotiable.
+
+### DM Review
+The world tick writes a log with events, dice rolls, and "DM Hooks" — suggested narration beats. The DM reviews this before revealing anything to the player. The DM may override any tick result that contradicts the narrative.
+
+## Atmospheric Hooks
+
+The `hooks/` directory contains shell scripts that fire automatically via Claude Code hooks to create atmospheric feedback. Configured in `.claude/settings.json`.
+
+### Active Hooks
+| Trigger | What Happens |
+|---------|-------------|
+| **Natural 20** rolled | Gold banner + Glass chime sound |
+| **Natural 1** rolled | Red banner + Basso thud sound |
+| **Combat starts** (encounter.md created) | "ROLL INITIATIVE" banner + Hero sound, terminal title → COMBAT |
+| **Session state saved** | Subtle save indicator + Submarine ping |
+| **HP drops below 50%** | Yellow HP LOW warning |
+| **HP drops below 25%** | Red HP CRITICAL warning + Basso sound |
+| **Character reaches 0 HP** | CHARACTER DOWN banner + Sosumi alert |
+| **Location changes** | Terminal title updates to current location |
+
+### How They Work
+Three dispatcher scripts (`hooks/post-write.sh`, `hooks/post-edit.sh`, `hooks/post-bash.sh`) route PostToolUse events to specific handler scripts. Audio uses macOS system sounds via `afplay` with Linux fallbacks. All audio plays in the background and fails silently on unsupported platforms.
+
+### Customization
+Add new triggers by creating handler scripts in `hooks/` and adding routing logic to the appropriate dispatcher. No `settings.json` changes needed.
 
 ## DM Information Discipline
 
@@ -227,6 +294,10 @@ The DM may roll secretly for passive or reactive checks (Perception, Insight, St
 | Check an NPC's profile | `games/{campaign}/world/npcs/{name}.md` |
 | See current party status | `games/{campaign}/session-state.md` |
 | See active quests | `games/{campaign}/quests/active.md` |
+| Advance the world | `/world-tick {duration}` |
+| Review world tick log | `games/{campaign}/world-tick-log.md` |
+| NPC info wall protocol | `agents/templates/00-information-walls.md` |
+| Hook scripts | `hooks/` |
 
 ## Source Integrity
 

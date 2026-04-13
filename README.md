@@ -45,14 +45,16 @@ crawledcode/
 ├── CLAUDE.md                    Master DM instructions
 ├── .claude/
 │   ├── settings.json            Hooks + agent teams config
-│   ├── agents/                  NPC subagent definitions (created per campaign)
-│   └── skills/                  6 custom slash commands
+│   ├── agents/                  NPC subagent + world-tick agent definitions
+│   │   └── world-tick.md        Background world simulation agent
+│   └── skills/                  7 custom slash commands
 │       ├── roll.md              /roll — dice rolling engine
 │       ├── combat.md            /combat — combat encounter management
 │       ├── rest.md              /rest — short/long rest processing
 │       ├── levelup.md           /levelup — guided character advancement
 │       ├── shop.md              /shop — merchant interaction
-│       └── session.md           /session — campaign lifecycle management
+│       ├── session.md           /session — campaign lifecycle management
+│       └── world-tick.md        /world-tick — background world advancement
 │
 ├── rules/                       D&D 5e SRD 5.1 reference (READ ONLY)
 │   ├── 00-quick-reference.md    DM screen: DCs, conditions, actions
@@ -71,9 +73,20 @@ crawledcode/
 │
 ├── games/                       Campaign data (one subdirectory per campaign)
 │
-└── agents/                      NPC agent system
-    └── templates/               7 archetype templates (quest-giver, merchant,
-                                 companion, villain, authority, sage, trickster)
+├── agents/                      NPC agent system
+│   └── templates/               8 files — info wall protocol + 7 archetype templates
+│                                (quest-giver, merchant, companion, villain,
+│                                 authority, sage, trickster)
+│
+└── hooks/                       Atmospheric trigger scripts
+    ├── post-write.sh            Dispatcher for Write tool events
+    ├── post-edit.sh             Dispatcher for Edit tool events
+    ├── post-bash.sh             Dispatcher for Bash tool events
+    ├── dice-fanfare.sh          Natural 20/1 banners + sound
+    ├── combat-start.sh          "ROLL INITIATIVE" banner + sound
+    ├── auto-save.sh             Session state save indicator
+    ├── hp-warning.sh            HP threshold alerts
+    └── location-change.sh       Terminal title updates
 ```
 
 ## Available Skills
@@ -86,6 +99,7 @@ crawledcode/
 | `/levelup` | Walk through leveling up a character step by step |
 | `/shop` | Browse merchant inventory, buy, sell, and haggle |
 | `/session` | Start, save, resume, or create campaigns |
+| `/world-tick` | Advance the world in the background — NPC agendas, factions, weather |
 
 ## Rules Coverage
 
@@ -99,16 +113,45 @@ All content sourced from the **D&D 5e SRD 5.1** (Creative Commons Attribution 4.
 - **250+ magic items** across all rarity tiers
 - **Complete equipment tables**, encounter building rules, treasure generation, and more
 
-## NPC Agent System
+## NPC Agent System — Information Walls
 
-Significant NPCs can be implemented as Claude Code subagents that run in the background, providing realistic multi-character worlds. Each NPC agent:
+Significant NPCs are implemented as Claude Code subagents with **information walls** — each NPC is spawned as a separate agent that genuinely does not have access to the full game state. This creates real information asymmetry:
 
-- Has a defined personality, knowledge boundaries, and goals
-- Reads game state files to understand the current situation
-- Stays in character during extended interactions
-- Writes state changes back to the campaign files
+- Each NPC has a **whitelist** of files they can read (their own profile, their location, the calendar) and a **blacklist** of files they must never access (player character sheets, DM secrets, other NPCs' private thoughts)
+- The NPC's words and decisions come from an independent generation with restricted context — they can withhold, reveal, or accidentally leak information based on their own judgment
+- The DM maintains full omniscience via the **Monitor** tool, watching the NPC agent's file access and reasoning in real time
+- Player dialogue is relayed through **SendMessage**, and the DM narrates the NPC's responses with added environmental context
+- Multiple NPCs can be spawned simultaneously for group scenes — each responds independently
 
-Seven archetype templates are provided: quest-giver, merchant, companion, villain, authority figure, sage, and trickster.
+Seven archetype templates are provided (quest-giver, merchant, companion, villain, authority figure, sage, trickster), each with pre-configured file access rules appropriate to their role.
+
+## Background World Tick
+
+The world doesn't freeze between player actions. The **world-tick** background agent simulates off-screen events while the party is occupied:
+
+- NPC agendas advance, factions make moves, threats escalate, weather shifts
+- All events are **bound to in-game time** — if the party spends 2 hours investigating, the world advances by exactly 2 hours, never more
+- Results are written to `world-tick-log.md` for the DM to review before narrating
+- Strict guardrails prevent the tick from killing PCs, resolving quests, or removing player agency
+- Probability rolls (DC 5 for likely events through DC 18 for rare events) determine which events occur
+- Automatically triggered during short rests (1hr), long rests (8hr), and travel
+
+## Atmospheric Hooks
+
+Shell scripts fire automatically via Claude Code hooks to create atmospheric feedback:
+
+| Trigger | Effect |
+|---------|--------|
+| Natural 20 rolled | Gold banner + Glass chime |
+| Natural 1 rolled | Red banner + Basso thud |
+| Combat starts | "ROLL INITIATIVE" banner + Hero sound + terminal title change |
+| Session state saved | Subtle save indicator + ping |
+| HP below 50% | Yellow warning |
+| HP below 25% | Red critical alert + sound |
+| Character at 0 HP | "CHARACTER DOWN" banner + alert |
+| Location changes | Terminal title updates to current location |
+
+Audio uses macOS system sounds via `afplay` with Linux `paplay` fallbacks. All audio plays in the background and fails silently on unsupported platforms.
 
 ## Campaign State Tracking
 
