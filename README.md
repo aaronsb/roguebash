@@ -44,6 +44,7 @@ crawledcode/
 │   └── feats/                   Grappler (only SRD feat)
 │
 ├── games/                       Campaign data (one subdirectory per campaign)
+│   └── oneshot/                 "The Vanishing Tide" — completed one-shot
 │
 └── agents/                      NPC agent system
     └── templates/               7 archetype templates (quest-giver, merchant,
@@ -97,6 +98,16 @@ When a campaign is created, it generates a full directory tree tracking:
 - NPC relationships and faction reputation
 - In-game calendar, weather, and time
 - Narrative arcs, plot threads, and DM secrets
+
+## Played Adventures
+
+### The Vanishing Tide (One-Shot)
+
+A mystery/horror one-shot set in the fog-shrouded coastal village of Salthollow. Villagers vanish one by one during storms, taken by something from the sea. The player — Faradin Underbough, a Lightfoot Halfling Ranger and wandering tradesman — arrives on a stormy night seeking shelter and unravels the truth: the "monster" is Elara Tidecaller, a beloved healer cursed and cast out by the village fifteen years ago. She's been keeping the taken villagers alive in magical stasis, desperate for the remorse that could break her curse.
+
+**Ending achieved: Redemption** — The curse was broken through genuine tears from three villagers who wronged Elara. Zero combat. Zero arrows fired. The entire adventure was resolved through investigation, empathy, and a fixed banister.
+
+Full adventure module, NPC profiles, location guides, and session logs preserved in `games/oneshot/`.
 
 ## Architecture Inspiration
 
