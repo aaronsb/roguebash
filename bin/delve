@@ -1,0 +1,21 @@
+#!/bin/bash
+# delve — roguebash CLI
+#
+#   delve new [--seed N] [--name NAME] [--class CLASS] [--race RACE]
+#   delve play [<run-id>]
+#   delve list
+#   delve show [<run-id>]
+#   delve abandon <run-id>
+#   delve help
+#
+# Internally:
+#   - `new` invokes engine/generator/generate.py to shuffle a world,
+#     engine/state to initialize the run directory, and writes
+#     character.json based on flags
+#   - `play` composes the system prompt via engine/prompt, then runs the
+#     sibling qwen/agent with that prompt + this project's tools/
+set -euo pipefail
+
+echo "delve: SCAFFOLD — not yet implemented" >&2
+echo "see design.md for the command surface this will cover" >&2
+exit 2

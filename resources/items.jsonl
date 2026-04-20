@@ -1,0 +1,1 @@
+{"id":"item.lantern","name":"brass lantern","tags":["light","consumable"],"tier":0,"use":{"effect":"grants_light","duration_turns":100,"consumes":"item.oil_flask"},"weight":2,"short_desc":"A tarnished brass lantern. Shake it and you can hear oil inside."}

@@ -1,0 +1,17 @@
+#!/bin/bash
+# look — TODO: implement (see tools/README.md for the contract)
+set -euo pipefail
+
+if [ "${1:-}" = "--schema" ]; then
+  cat <<'JSON'
+{
+  "name": "look",
+  "description": "TODO: describe what this tool does",
+  "parameters": { "type": "object", "properties": {}, "required": [] }
+}
+JSON
+  exit 0
+fi
+
+echo "look: not yet implemented" >&2
+exit 2

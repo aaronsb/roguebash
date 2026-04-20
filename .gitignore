@@ -1,16 +1,15 @@
-# OS
-.DS_Store
-Thumbs.db
+# Model weights, if any end up here
+*.gguf
+*.safetensors
 
-# IDE
+# Runtime state lives in XDG dirs, not in-repo
+/state/
+*.log
+
+# Python / editor cruft
+__pycache__/
+*.pyc
+.DS_Store
+*.swp
 .idea/
 .vscode/
-*.swp
-*.swo
-
-# Claude Code internals (plans, task state)
-.claude/plans/
-
-# Environment
-.env
-.env.local

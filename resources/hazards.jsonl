@@ -1,0 +1,1 @@
+{"id":"hazard.leech_pool","name":"leech pool","tier":1,"tags":["water","biological"],"trigger":"on_enter","check":{"ability":"dex","dc":11,"on_fail":"apply_leeches"},"effect":{"apply_leeches":{"damage_per_turn":"1d4","damage_type":"piercing","ends":"skill_check:athletics:12"}},"short_desc":"The water boils softly. Leeches rise toward warmth."}

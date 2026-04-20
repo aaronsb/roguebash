@@ -1,0 +1,1 @@
+{"id":"monster.giant_frog","name":"giant frog","tier":1,"tags":["beast","amphibious","swamp"],"ac":11,"hp":"2d6+2","speed":{"walk":20,"swim":30},"stats":{"str":12,"dex":13,"con":11,"int":2,"wis":10,"cha":3},"attacks":[{"name":"bite","to_hit":"+3","damage":"1d6+1","damage_type":"piercing"}],"xp":50,"short_desc":"A toad the size of a small dog, mottled green and grey."}
