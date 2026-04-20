@@ -1,0 +1,37 @@
+#!/bin/bash
+# adapter: local — wraps the sibling qwen/agent script.
+# Reads the roguebash context from env and delegates.
+set -euo pipefail
+
+: "${ROGUEBASH_SYSTEM_PROMPT:?}"
+: "${ROGUEBASH_USER_MESSAGE:?}"
+: "${ROGUEBASH_TOOLS_DIR:?}"
+: "${ROGUEBASH_MAX_TURNS:=12}"
+
+# The `agent` script expects tools under ./tools next to itself.
+# We temporarily point it at our roguebash tools/ by running it from a
+# scratch cwd that symlinks tools/ into place.
+
+AGENT_BIN="$(command -v agent || echo "$HOME/Projects/ai/qwen/agent")"
+if [ ! -x "$AGENT_BIN" ]; then
+  echo "adapter/local: agent binary not found (expected at $AGENT_BIN)" >&2
+  echo "install: ln -s ~/Projects/ai/qwen/agent ~/.local/bin/agent" >&2
+  exit 127
+fi
+
+SCRATCH="$(mktemp -d)"
+trap 'rm -rf "$SCRATCH"' EXIT
+ln -s "$ROGUEBASH_TOOLS_DIR" "$SCRATCH/tools"
+
+# agent composes its own user prompt; we prepend the system prompt as a
+# lead-in paragraph because it currently takes only a user message.
+# (When agent gains native --system flag support, switch to that.)
+PROMPT="$ROGUEBASH_SYSTEM_PROMPT
+
+---
+
+Player input:
+$ROGUEBASH_USER_MESSAGE"
+
+cd "$SCRATCH"
+exec "$AGENT_BIN" -n "$ROGUEBASH_MAX_TURNS" -q "$PROMPT"

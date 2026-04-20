@@ -94,6 +94,29 @@ mutate state; prose is written to `ledger.jsonl` as a `narration` event.
 qwen/ project) with the composed system prompt and the roguebash tool
 directory.
 
+
+## Pluggable agent adapters
+
+The DM brain is an agent, and we explicitly avoid locking roguebash to
+one. `adapters/<name>/run` is the protocol: read context from
+ROGUEBASH_* env vars, do the tool-call loop, print narration to stdout.
+
+Capability contract (see `adapters/README.md`): tool calling, multi-turn,
+system prompt, bounded turns, 16k+ context. Agents that don't meet all
+five are excluded by design.
+
+Provided:
+- `adapters/local/run` — wraps the sibling `qwen/agent` script
+- `adapters/goose/run` — sketch, not yet functional (awaits an MCP
+  bridge from our tools/ to Goose's expected transport)
+
+Select with `delve.toml`:
+
+```toml
+[agent]
+adapter = "local"
+```
+
 ## Directory layout
 
 ```

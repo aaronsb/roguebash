@@ -1,0 +1,26 @@
+#!/bin/bash
+# adapter: goose — Block's Goose CLI. SKETCH ONLY.
+#
+# Goose ingests tools via MCP. To make this adapter real:
+#   1. Expose ROGUEBASH_TOOLS_DIR as an MCP server (a small wrapper that
+#      translates MCP tools/list + tools/call to our `--schema` + stdin
+#      JSON convention).
+#   2. Write that MCP config into $GOOSE_CONFIG_DIR.
+#   3. Invoke `goose run --config ... --instructions $ROGUEBASH_SYSTEM_PROMPT`.
+#
+# Until (1) is built, this adapter just declares itself unsupported.
+set -euo pipefail
+
+cat >&2 <<MSG
+adapters/goose/run: not yet implemented.
+
+Goose consumes tools as MCP servers. A compatible implementation needs:
+  - An MCP bridge that exposes ROGUEBASH_TOOLS_DIR (MCP-shaped bash
+    scripts) via the MCP stdio transport so Goose can discover & call
+    them.
+  - Config generation + invocation of 'goose run'.
+
+Contributions welcome. See adapters/README.md for the capability
+contract and protocol.
+MSG
+exit 3
