@@ -71,13 +71,28 @@ def generate(
     # Macro layer
     # ------------------------------------------------------------------
     _verbose(verbose, f"macro: picking {macro_nodes} area-nodes")
+    # Passing `cat.rooms` lets build_macro see transition-biome rooms;
+    # passing `cat.adjacency` drives weighted edge selection and the
+    # transition-splicing step.
+    macro_log: list[str] = []
     selected_areas, adj, start_area, goal_area = build_macro(
-        cat.areas, macro_nodes, rng
+        cat.areas,
+        macro_nodes,
+        rng,
+        adjacency=cat.adjacency,
+        rooms=cat.rooms,
+        verbose_log=macro_log,
     )
+    for line in macro_log:
+        _verbose(verbose, line)
+    synthesized_ids = {
+        a["id"] for a in selected_areas if a.get("_synthesized")
+    }
     _verbose(
         verbose,
         f"macro: start={start_area} goal={goal_area} "
-        f"selected={len(selected_areas)}",
+        f"selected={len(selected_areas)} "
+        f"(transitions={len(synthesized_ids)})",
     )
 
     # ------------------------------------------------------------------

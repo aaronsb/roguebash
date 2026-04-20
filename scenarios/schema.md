@@ -64,6 +64,63 @@ XDG state directory.
 
 ---
 
+## Transition rooms — the spline between biomes
+
+Transition rooms are a special first-class subtype of `room` whose job is to
+smooth abrupt biome cuts in the macro-generated path. Instead of stitching
+`swamp → desert` directly (a "randomly-generated" tell), the generator
+inserts a transition room like `desert.windcut_dunes → transition.desert_ruin_wash → ruin.overgrown_plaza` whenever the biome-adjacency cost between two
+macro neighbors is > 1.
+
+A transition room lives in `rooms.jsonl` alongside ordinary rooms, but uses
+`biome: "transition"` (not one of the canonical eight) and adds a `bridges`
+field naming the two biomes it connects:
+
+```json
+{
+  "id": "transition.forest_swamp_edge",
+  "type": "room",
+  "name": "Forest Swamp Edge",
+  "biome": "transition",
+  "bridges": ["forest", "swamp"],
+  "tier": 1,
+  "tags": ["outdoor", "liminal", "boundary"],
+  "compatible_with": ["forest.*", "swamp.*"],
+  "short_desc": "The last of the trees give way to standing water.",
+  "long_desc": "…",
+  "exits": { "north": null, "east": null, "south": null, "west": null },
+  "spawns": { "items": [], "monsters": [], "hazards": [] },
+  "flags": {}
+}
+```
+
+### Conventions
+
+| field | notes |
+|---|---|
+| `id` | `transition.<bio_a>_<bio_b>_<descriptor>` (order `bio_a, bio_b` alphabetical where practical — just be consistent) |
+| `biome` | literally `"transition"` — keeps them out of normal biome pools in `rooms.pool: ["forest.*"]` etc. |
+| `bridges` | exactly two biome strings; order insignificant |
+| `compatible_with` | should include globs for both bridged biomes so generic compat checks still pass |
+| `tier` | pick a tier near the average of what you expect on either side; generators match by biome cost, not tier |
+| `tags` | always include `liminal` and `boundary`; room-feel tags (`wet`, `dark`, `collapsed`) as normal |
+
+### How they're placed
+
+Transition rooms are **not** picked up by normal `rooms.pool` entries —
+their `biome` is `"transition"`, not (e.g.) `"forest"`, so `_expand_pool`'s
+biome-head match skips them. The macro generator synthesizes a single-room
+"transition area" on the fly when it inserts a transition between two
+high-cost neighbors. That synthetic area explicitly names the transition
+room in its `rooms.pool` / `must_include`, so the micro layer instantiates
+it just like any other area.
+
+See `scenarios/_common/biome_adjacency.json` for the cost matrix that
+drives the insertion decision, and `engine/generator/macro.py` for the
+synthesis logic.
+
+---
+
 ## areas.jsonl — container nodes with internal subgraphs
 
 ```json

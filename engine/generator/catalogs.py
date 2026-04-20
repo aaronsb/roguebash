@@ -33,6 +33,8 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable
 
+from .adjacency import BiomeAdjacency, load_adjacency
+
 
 # Catalogs that live under `_common/` and are reusable across scenarios.
 COMMON_FILES: dict[str, str] = {
@@ -72,6 +74,7 @@ class Catalogs:
         monsters: dict[str, dict[str, Any]],
         items: dict[str, dict[str, Any]],
         hazards: dict[str, dict[str, Any]],
+        adjacency: BiomeAdjacency | None = None,
     ) -> None:
         self.areas = areas
         self.rooms = rooms
@@ -80,6 +83,9 @@ class Catalogs:
         self.monsters = monsters
         self.items = items
         self.hazards = hazards
+        # Adjacency defaults to an empty matrix so tests and ad-hoc
+        # Catalogs constructions don't need to supply one.
+        self.adjacency = adjacency if adjacency is not None else BiomeAdjacency({})
 
     # Ref-resolution helpers. Return None on miss so callers can skip
     # gracefully (logged via warn(), never raised).
@@ -244,6 +250,10 @@ def load_catalogs(scenarios_dir: Path, scenario: str) -> Catalogs:
                     "(expected monster./item./hazard.) — skipped"
                 )
 
+    # Biome adjacency matrix — drives macro edge-weighting and transition
+    # room insertion. Missing/invalid → empty matrix (no biome bias).
+    adjacency = load_adjacency(scenarios_dir)
+
     return Catalogs(
         areas=areas_map,
         rooms=rooms_map,
@@ -252,4 +262,5 @@ def load_catalogs(scenarios_dir: Path, scenario: str) -> Catalogs:
         monsters=monsters_map,
         items=items_map,
         hazards=hazards_map,
+        adjacency=adjacency,
     )

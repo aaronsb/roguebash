@@ -57,8 +57,12 @@ integer for full determinism:
    internal subgraph).
 2. **Macro generator.** Choose `start` and `goal` area-nodes that sit at
    the low and high ends of the difficulty ramp. Sample N area-nodes from
-   the catalog. Connect where `compatible_with` tags overlap. BFS(start,
-   goal); retry on failure.
+   the catalog. Connect where `compatible_with` tags overlap, **weighted
+   by biome-adjacency cost** from `scenarios/_common/biome_adjacency.json`
+   so the biome arc curves rather than jumping. Any remaining high-cost
+   edge with an authored transition room (`biome: "transition"` in
+   `rooms.jsonl`) is spliced with a synthetic one-room transition area.
+   BFS(start, goal); retry on failure.
 3. **Micro generator.** For each area node that is a container, instantiate
    its internal subgraph with the same compatibility logic; pin the
    declared entrance/exit rooms so they line up with macro-level neighbors.
@@ -143,6 +147,7 @@ roguebash/
 │   ├── schema.md                # JSONL schemas (read this first)
 │   ├── _common/                 # scenario-agnostic catalogs
 │   │   ├── biomes.md            # canonical biome set
+│   │   ├── biome_adjacency.json # cost matrix for macro path-smoothing
 │   │   ├── monsters.jsonl       # BEASTS — fight / loot / evade
 │   │   ├── items.jsonl          # loot catalog
 │   │   └── hazards.jsonl        # traps & environmental dangers
