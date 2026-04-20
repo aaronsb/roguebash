@@ -1,17 +1,26 @@
 #!/bin/bash
-# inventory — TODO: implement (see tools/README.md for the contract)
+# inventory — list what the character carries, with short_desc per item.
 set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}")"
+HERE="$(dirname "$SELF")"
 
 if [ "${1:-}" = "--schema" ]; then
   cat <<'JSON'
 {
   "name": "inventory",
-  "description": "TODO: describe what this tool does",
-  "parameters": { "type": "object", "properties": {}, "required": [] }
+  "description": "List the character's inventory: each carried item with its short description and quantity. Includes gold and active status effects.",
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
 }
 JSON
   exit 0
 fi
 
-echo "inventory: not yet implemented" >&2
-exit 2
+# shellcheck source=../_shared/common.sh
+source "$HERE/../_shared/common.sh"
+rb_read_args
+rb_run_py "$HERE/inventory.py"

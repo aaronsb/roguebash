@@ -1,17 +1,35 @@
 #!/bin/bash
-# move — TODO: implement (see tools/README.md for the contract)
+# move — traverse an exit from the current room. Verifies the direction
+# is a real exit in graph.json, updates world.json.current_room, reveals
+# the target, fires any on_enter hazard (detection only — full resolution
+# deferred to a later lane), and appends a tool_call ledger event.
 set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}")"
+HERE="$(dirname "$SELF")"
 
 if [ "${1:-}" = "--schema" ]; then
   cat <<'JSON'
 {
   "name": "move",
-  "description": "TODO: describe what this tool does",
-  "parameters": { "type": "object", "properties": {}, "required": [] }
+  "description": "Traverse an exit from the current room. Fails if the direction is not a real exit. On success, updates the player's location, reveals the new room's exits, and reports any hazard triggered on entry.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "direction": {
+        "type": "string",
+        "enum": ["north", "south", "east", "west", "up", "down"],
+        "description": "Cardinal or vertical direction to move."
+      }
+    },
+    "required": ["direction"]
+  }
 }
 JSON
   exit 0
 fi
 
-echo "move: not yet implemented" >&2
-exit 2
+# shellcheck source=../_shared/common.sh
+source "$HERE/../_shared/common.sh"
+rb_read_args
+rb_run_py "$HERE/move.py"

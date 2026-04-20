@@ -1,17 +1,35 @@
 #!/bin/bash
-# use — TODO: implement (see tools/README.md for the contract)
+# use — invoke an item's `use.effect` from the items catalog.
 set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}")"
+HERE="$(dirname "$SELF")"
 
 if [ "${1:-}" = "--schema" ]; then
   cat <<'JSON'
 {
   "name": "use",
-  "description": "TODO: describe what this tool does",
-  "parameters": { "type": "object", "properties": {}, "required": [] }
+  "description": "Invoke an item's use-effect (e.g. light a lantern, drink a potion). Resolves effects this lane can handle now (light sources, consumables, status grants); combat-ish effects are deferred and reported as such for the DM to narrate.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "item_ref": {
+        "type": "string",
+        "description": "Canonical item id from inventory, e.g. 'item.torch'."
+      },
+      "target": {
+        "type": "string",
+        "description": "Optional target for the effect: another item id, an npc id, or a monster id."
+      }
+    },
+    "required": ["item_ref"]
+  }
 }
 JSON
   exit 0
 fi
 
-echo "use: not yet implemented" >&2
-exit 2
+# shellcheck source=../_shared/common.sh
+source "$HERE/../_shared/common.sh"
+rb_read_args
+rb_run_py "$HERE/use.py"
