@@ -1,17 +1,31 @@
 #!/bin/bash
-# take — TODO: implement (see tools/README.md for the contract)
+# take — move an item from the current room into the character's inventory.
 set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}")"
+HERE="$(dirname "$SELF")"
 
 if [ "${1:-}" = "--schema" ]; then
   cat <<'JSON'
 {
   "name": "take",
-  "description": "TODO: describe what this tool does",
-  "parameters": { "type": "object", "properties": {}, "required": [] }
+  "description": "Pick up an item from the current room and add it to inventory. Fails if the item is not visible in the current room.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "item_ref": {
+        "type": "string",
+        "description": "Canonical item id, e.g. 'item.lantern'."
+      }
+    },
+    "required": ["item_ref"]
+  }
 }
 JSON
   exit 0
 fi
 
-echo "take: not yet implemented" >&2
-exit 2
+# shellcheck source=../_shared/common.sh
+source "$HERE/../_shared/common.sh"
+rb_read_args
+rb_run_py "$HERE/take.py"

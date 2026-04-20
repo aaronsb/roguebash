@@ -1,17 +1,32 @@
 #!/bin/bash
-# examine — TODO: implement (see tools/README.md for the contract)
+# examine — deeper description of a room, item (in room or inventory),
+# NPC, or monster.
 set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}")"
+HERE="$(dirname "$SELF")"
 
 if [ "${1:-}" = "--schema" ]; then
   cat <<'JSON'
 {
   "name": "examine",
-  "description": "TODO: describe what this tool does",
-  "parameters": { "type": "object", "properties": {}, "required": [] }
+  "description": "Give a deeper description of a target: a room (id or 'room'), an item (by id, in the room or in inventory), an NPC, or a monster. Returns long_desc + tags/dialog_hooks/HP-status where relevant.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "target": {
+        "type": "string",
+        "description": "Target identifier: a room id, item.<id>, npc.<id>, monster.<id>, or the literal 'room' / 'here' for the current room."
+      }
+    },
+    "required": ["target"]
+  }
 }
 JSON
   exit 0
 fi
 
-echo "examine: not yet implemented" >&2
-exit 2
+# shellcheck source=../_shared/common.sh
+source "$HERE/../_shared/common.sh"
+rb_read_args
+rb_run_py "$HERE/examine.py"

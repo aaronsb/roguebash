@@ -1,17 +1,27 @@
 #!/bin/bash
-# look — TODO: implement (see tools/README.md for the contract)
+# look — describe the current room: short_desc, known exits, visible
+# items/NPCs/monsters. The DM (caller) uses this to narrate.
 set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}")"
+HERE="$(dirname "$SELF")"
 
 if [ "${1:-}" = "--schema" ]; then
   cat <<'JSON'
 {
   "name": "look",
-  "description": "TODO: describe what this tool does",
-  "parameters": { "type": "object", "properties": {}, "required": [] }
+  "description": "Describe the current room: short description, known exits, and visible items, NPCs, and monsters. Call this to orient after movement or when the player asks to look around.",
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
 }
 JSON
   exit 0
 fi
 
-echo "look: not yet implemented" >&2
-exit 2
+# shellcheck source=../_shared/common.sh
+source "$HERE/../_shared/common.sh"
+rb_read_args
+rb_run_py "$HERE/look.py"
