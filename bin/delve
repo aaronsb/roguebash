@@ -3,6 +3,7 @@
 
 Subcommands:
 
+  delve start                   # easy-mode: check backend + new-or-resume + play
   delve new  [--scenario N] [--seed N] [--name N] [--class C] [--race R]
              [--macro-nodes N]
   delve play [<run-id>]
@@ -25,6 +26,8 @@ import shutil
 import subprocess
 import sys
 import tomllib
+import types
+import urllib.request
 from pathlib import Path
 
 # Make the repo root importable so `from engine...` works when `delve`
@@ -57,7 +60,13 @@ from engine.state.paths import (  # noqa: E402
 
 
 DEFAULT_CONFIG: dict = {
-    "agent": {"adapter": "local", "max_turns": 12},
+    "agent": {
+        "adapter": "local",
+        "max_turns": 12,
+        # The llama.cpp-compatible endpoint delve probes before starting
+        # a run. Override in delve.toml if your adapter points elsewhere.
+        "endpoint": "127.0.0.1:8765",
+    },
     "generator": {"default_scenario": "barrow_swamp", "default_macro_nodes": 10},
 }
 
@@ -166,7 +175,22 @@ def _opening_hook(repo_root: Path, scenario: str) -> str:
 # =====================================================================
 
 
-def cmd_new(args: argparse.Namespace, config: dict) -> int:
+def _check_endpoint(config: dict) -> tuple[bool, str]:
+    """Probe the configured llama.cpp endpoint. Returns (up, endpoint)."""
+    endpoint = config["agent"].get("endpoint", "127.0.0.1:8765")
+    try:
+        req = urllib.request.Request(f"http://{endpoint}/health")
+        with urllib.request.urlopen(req, timeout=2) as r:
+            data = r.read().decode("utf-8", "replace").lower()
+            if "ok" in data:
+                return True, endpoint
+    except Exception:
+        pass
+    return False, endpoint
+
+
+def _create_run(args: argparse.Namespace, config: dict) -> str:
+    """The body of `delve new` without the final print — returns run_id."""
     seed = args.seed if args.seed is not None else _random.randrange(1, 2**31)
     scenario = args.scenario or config["generator"]["default_scenario"]
     macro_nodes = args.macro_nodes or config["generator"]["default_macro_nodes"]
@@ -179,8 +203,7 @@ def cmd_new(args: argparse.Namespace, config: dict) -> int:
             if p.is_dir() and not p.name.startswith(("_", "."))
         )
         if not candidates:
-            print("delve: no scenarios found under scenarios/", file=sys.stderr)
-            return 1
+            raise RuntimeError("no scenarios found under scenarios/")
         scenario = _random.Random(seed).choice(candidates)
 
     graph = generate(
@@ -212,8 +235,69 @@ def cmd_new(args: argparse.Namespace, config: dict) -> int:
     hook = _opening_hook(_REPO_ROOT, scenario)
     _ledger.narration(rd, 0, hook)
 
+    return run_id
+
+
+def cmd_new(args: argparse.Namespace, config: dict) -> int:
+    try:
+        run_id = _create_run(args, config)
+    except Exception as e:
+        print(f"delve: {e}", file=sys.stderr)
+        return 1
     print(run_id)
     return 0
+
+
+def cmd_start(args: argparse.Namespace, config: dict) -> int:
+    """Easy-mode launcher: check backend, new-or-resume, play."""
+    # 1. Backend presence.
+    up, endpoint = _check_endpoint(config)
+    if not up:
+        print(
+            f"delve: no llama.cpp-compatible endpoint reachable at {endpoint}",
+            file=sys.stderr,
+        )
+        print("delve needs a running LLM backend. If you installed agent-bash:", file=sys.stderr)
+        print("    askd start", file=sys.stderr)
+        print(
+            "Otherwise, start your adapter's backend before running `delve start`.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"[backend ok at {endpoint}]")
+
+    # 2. Existing alive run? — helpful diversion, don't overwrite.
+    alive = [rid for rid, st in list_runs() if st == "alive"]
+    if alive:
+        alive.sort(key=lambda rid: _run_dir(rid).stat().st_mtime, reverse=True)
+        most_recent = alive[0]
+        print()
+        print(f"You already have an ongoing run: {most_recent}")
+        print()
+        print(f"    delve play               # resume it")
+        print(f"    delve abandon {most_recent}")
+        print(f"    delve start              # start fresh after abandoning")
+        return 0
+
+    # 3. No alive run — make one with defaults and play.
+    default_new = types.SimpleNamespace(
+        scenario=None,
+        seed=None,
+        name="Wanderer",
+        cls="ranger",
+        race="halfling",
+        macro_nodes=None,
+    )
+    try:
+        run_id = _create_run(default_new, config)
+    except Exception as e:
+        print(f"delve: failed to create run: {e}", file=sys.stderr)
+        return 1
+    print(f"[new run: {run_id}]")
+    print()
+
+    play_args = types.SimpleNamespace(run_id=run_id)
+    return cmd_play(play_args, config)
 
 
 def cmd_list(args: argparse.Namespace, config: dict) -> int:
@@ -369,6 +453,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="delve", add_help=False)
     sub = p.add_subparsers(dest="cmd")
 
+    sub.add_parser("start", add_help=False)
+
     new = sub.add_parser("new", add_help=False)
     new.add_argument("--scenario", default=None)
     new.add_argument("--seed", type=int, default=None)
@@ -399,6 +485,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     cfg = load_config()
 
+    if args.cmd == "start":
+        return cmd_start(args, cfg)
     if args.cmd == "new":
         return cmd_new(args, cfg)
     if args.cmd == "play":
