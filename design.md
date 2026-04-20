@@ -111,7 +111,9 @@ roguebash/
 │   ├── schema.md                # JSONL schemas (read this first)
 │   ├── rooms.jsonl              # terminal-node catalog
 │   ├── areas.jsonl              # container catalog (with subgraphs)
-│   ├── monsters.jsonl           # bestiary-lite
+│   ├── monsters.jsonl           # BEASTS — fight / loot / evade
+│   ├── npcs.jsonl               # NPCs — hinder / neutral / help
+│   ├── factions.jsonl           # faction disposition matrix, territories
 │   ├── items.jsonl              # loot catalog
 │   └── hazards.jsonl            # traps & environmental dangers
 ├── tools/

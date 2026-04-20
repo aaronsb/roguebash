@@ -82,6 +82,24 @@ XDG state directory.
 
 ---
 
+## Beasts vs NPCs (the load-bearing distinction)
+
+- A **beast** (`monsters.jsonl`) is something you *fight or loot*. No
+  dialog surface. Giant frogs, oozes, wights, swarms, wild dogs, feral
+  wraiths. Encounter = combat or evasion.
+- An **NPC** (`npcs.jsonl`) is something that can *hinder, help, or
+  simply exist alongside you* — a human bandit, a dwarven blacksmith, a
+  hermit, a frightened farmer. NPCs have a disposition, a role, a
+  species, and optionally a faction allegiance. Encounter surfaces
+  include conversation, trade, quest hooks, and (if it comes to it)
+  combat.
+
+The same *species* can legally live on either side: a goblin swarm
+bursting out of a sewer grate is a beast; the goblin tribe with a camp,
+a grievance, and a chief is an NPC roster. Authoring choice, per entry.
+
+---
+
 ## monsters.jsonl — bestiary-lite
 
 ```json
@@ -104,6 +122,109 @@ XDG state directory.
 ```
 
 HP can be an integer (fixed) or a dice expression; rolled at spawn.
+
+---
+
+## npcs.jsonl — sentient denizens with social surface
+
+```json
+{
+  "id": "npc.bandit_archer",
+  "species": "human",
+  "role": "bandit",
+  "tier": 1,
+  "disposition_default": "hostile",
+  "faction_default": "faction.red_hollow",
+  "ac": 12,
+  "hp": "11 (2d8+2)",
+  "stats": { "str": 11, "dex": 14, "con": 12, "int": 10, "wis": 10, "cha": 10 },
+  "attacks": [
+    { "name": "shortbow", "to_hit": "+4", "damage": "1d6+2", "damage_type": "piercing", "range": 80 },
+    { "name": "scimitar", "to_hit": "+3", "damage": "1d6+1", "damage_type": "slashing" }
+  ],
+  "dialog_hooks": [
+    "demands gold, crossbow aimed",
+    "boasts about what the Red Hollow will do to the next caravan",
+    "threatens but will run if outmatched"
+  ],
+  "loot_table": ["item.copper_pouch", "item.arrows", "item.stolen_ring"],
+  "xp": 25,
+  "short_desc": "A hollow-eyed human in mismatched leather, bow drawn."
+}
+```
+
+### Field contract (deltas from monsters.jsonl)
+
+| field | notes |
+|---|---|
+| `species` | `human`, `dwarf`, `elf`, `halfling`, `goblin`, `orc`, ... |
+| `role` | `bandit`, `blacksmith`, `farmer`, `guard`, `merchant`, `hermit`, `cultist`, `scout`, `innkeeper`, `priest`, ... |
+| `disposition_default` | `hostile`, `wary`, `neutral`, `friendly` — can be overridden by the encounter context (e.g. a normally-friendly farmer is hostile if you just burned his barn) |
+| `faction_default` | `faction.*` id, or `null` for unaligned wanderers |
+| `dialog_hooks` | 2–5 one-line prompts the DM can use to drive the NPC's voice. Not literal dialog — hooks for improvisation. |
+| `loot_table` | item refs dropped on death (looted only; no gamey "corpses contain 5gp" — make it flavored) |
+
+---
+
+## factions.jsonl — who owns what, who hates whom
+
+Factions let the generator populate areas *coherently*: an area controlled
+by the Red Hollow will draw bandit NPCs; a farming village under their
+"protection" will draw fearful farmers and the occasional bandit toll
+collector. The same dwarf template can appear as a blacksmith in a peaceful
+dwarf-run town *or* as an angry exile in the wilds — faction and
+disposition do the routing.
+
+```json
+{
+  "id": "faction.red_hollow",
+  "name": "Red Hollow Bandits",
+  "tier": 2,
+  "description": "Former coachmen turned brigands after the western trade road collapsed. They extort the swampland villages and ambush what little traffic still uses the old highway.",
+  "home_areas": ["area.red_hollow_camp"],
+  "territories": ["area.barrow_swamp", "area.old_highway"],
+  "roles": ["bandit", "bandit_captain", "scout", "fence"],
+  "relations": {
+    "player_default": "hostile",
+    "faction.oak_mill": "dominating",
+    "faction.crown_patrol": "hostile",
+    "faction.iron_vein_clan": "neutral"
+  },
+  "population_mix": {
+    "bandit": 0.7,
+    "scout": 0.2,
+    "bandit_captain": 0.1
+  }
+}
+```
+
+### Field contract
+
+| field | notes |
+|---|---|
+| `home_areas` | areas *the faction lives in* — populated entirely from its role pool |
+| `territories` | areas the faction *influences but doesn't wholly inhabit* — e.g. a village under protection, a highway they patrol — populated with a mix of local NPCs + faction agents |
+| `roles` | which `role` values in `npcs.jsonl` this faction recruits from |
+| `relations.player_default` | `hostile` / `wary` / `neutral` / `friendly` — starting disposition on first contact |
+| `relations.<other_faction>` | `hostile` / `rival` / `neutral` / `allied` / `dominating` / `fearful` — two-way relationships; the generator uses this to decide secondary tensions in shared areas |
+| `population_mix` | weights for role selection when generating home-area inhabitants |
+
+### Cross-reference conventions
+
+To keep parallel authoring sane:
+
+- Area ids: `area.<biome>_<descriptor>`, e.g. `area.barrow_swamp`
+- Room ids: `<biome>.<descriptor>`, e.g. `swamp.boardwalk_gate`
+- NPC ids: `npc.<role>_<descriptor>`, e.g. `npc.bandit_archer`,
+  `npc.dwarf_blacksmith`
+- Monster ids: `monster.<descriptor>`, e.g. `monster.giant_frog`
+- Item ids: `item.<descriptor>`
+- Hazard ids: `hazard.<descriptor>`
+- Faction ids: `faction.<short_name>`
+
+Authors in parallel lanes should follow these conventions so cross-refs
+(rooms referencing items, factions referencing areas, areas referencing
+faction control) just work when assembled.
 
 ---
 
