@@ -259,6 +259,22 @@ faction control) just work when assembled.
 }
 ```
 
+### Armor AC fields (convention)
+
+Armor entries carry an `armor_type` discriminator and use different AC
+fields depending on it:
+
+- `armor_type: "body"` → `ac_base` (integer), the AC *replacement* value
+  (e.g. leather = 11, chain shirt = 13, plate = 18). Dex modifier
+  application depends on the armor's mobility; record `dex_cap: N` or
+  `dex_cap: "none"` if relevant.
+- `armor_type: "shield"` → `ac_bonus` (integer), an *additive* bonus
+  stacked on whatever body armor is worn (shield = +2).
+- Optional `stealth_disadvantage: true` for plate/chain etc.
+
+This split keeps the math unambiguous: consumers check `armor_type` and
+read the appropriate field.
+
 ---
 
 ## hazards.jsonl — traps, environmental dangers, room-level perils

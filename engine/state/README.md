@@ -100,7 +100,7 @@ full history. This bounds prompt size regardless of run length.
 | `skill_check` | `ability`, `dc`, `roll`, `modifier`, `total`, `pass` |
 | `save_throw` | `save_type`, `dc`, `roll`, `modifier`, `total`, `pass` |
 | `attack` | `attacker`, `target`, `weapon`, `to_hit_roll`, `to_hit_total`, `ac`, `hit`, `damage` |
-| `damage` | `target`, `amount`, `type`, `source` |
+| `damage` | `target`, `amount`, `damage_type`, `source` (the inner field is named `damage_type` to avoid collision with the outer event-type discriminator `"type":"damage"`) |
 | `heal` | `target`, `amount`, `source` |
 | `item_taken` | `item_ref`, `from_room` |
 | `item_dropped` | `item_ref`, `to_room` |
