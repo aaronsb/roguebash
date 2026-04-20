@@ -47,7 +47,7 @@ child process. Roguebash doesn't care, as long as stdout is prose.
 
 ## Provided adapters
 
-### `local/` — sibling qwen/agent
+### `local/` — sibling [agent-bash](https://github.com/aaronsb/agent-bash) `agent`
 
 Default. Wraps our locally-built `agent` script (tool discovery via
 directory, multi-turn loop, reasoning toggle). Works against

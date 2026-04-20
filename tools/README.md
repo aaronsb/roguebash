@@ -1,6 +1,7 @@
 # tools/ — game tool contract
 
-Tools follow the same MCP-shaped convention as the sibling `qwen/tools/`:
+Tools follow the same MCP-shaped convention as the sibling
+[agent-bash](https://github.com/aaronsb/agent-bash) project's `tools/`:
 
 - Each tool lives in its own directory: `tools/<name>/`
 - Inside, an executable named `<name>` is the entrypoint
