@@ -1,9 +1,10 @@
 """engine.generator — deterministic world procgen for roguebash.
 
-Loads the `resources/*.jsonl` catalogs, assembles a macro graph of area
-nodes connected by `compatible_with` matches, instantiates each area's
-internal room subgraph, resolves faction-aware NPC populations and
-spawn tables, and serializes the result to `graph.json`.
+Loads `scenarios/_common/*.jsonl` + `scenarios/<name>/*.jsonl` catalogs,
+assembles a macro graph of area nodes connected by `compatible_with`
+matches, instantiates each area's internal room subgraph, resolves
+faction-aware NPC populations and spawn tables, and serializes the
+result to `graph.json`.
 
 Stdlib only. No LLM calls. Fully deterministic given `--seed`.
 

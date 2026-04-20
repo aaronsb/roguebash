@@ -47,9 +47,14 @@ The model never sees `graph.json`. Each turn it gets: current room from
 Hierarchical WaveFunctionCollapse-on-graphs pipeline, seeded by a single
 integer for full determinism:
 
-1. **Load catalogs from `resources/*.jsonl`.** Each entry is either a
-   `room` (terminal node) or an `area` (container with a declared set of
-   entrance/exit rooms and its own internal subgraph).
+1. **Load catalogs from `scenarios/`.** Content is split in two:
+   `scenarios/_common/*.jsonl` supplies the scenario-agnostic bestiary,
+   loot, and hazards; `scenarios/<name>/*.jsonl` supplies the scenario's
+   rooms, areas, factions, and NPCs. An optional
+   `scenarios/<name>/overrides.jsonl` can replace common entries by id
+   (scenario wins). Each entry is either a `room` (terminal node) or
+   an `area` (container with declared entrance/exit rooms and its own
+   internal subgraph).
 2. **Macro generator.** Choose `start` and `goal` area-nodes that sit at
    the low and high ends of the difficulty ramp. Sample N area-nodes from
    the catalog. Connect where `compatible_with` tags overlap. BFS(start,
@@ -63,6 +68,10 @@ integer for full determinism:
 
 Target run size: **8–15 macro nodes × 3–8 rooms each ≈ 50 rooms**. One
 sitting, meaningful permadeath.
+
+Scenario is selected at generation time: `--scenario <name>` (default
+`barrow_swamp`), or `--scenario random` to let the seed pick from the
+available scenario directories.
 
 ## System prompt composition (each turn)
 
@@ -130,15 +139,21 @@ roguebash/
 │   ├── state/                   # XDG paths, save/load, ledger append
 │   ├── prompt/                  # system-prompt composer
 │   └── rules/                   # skill-check, combat, damage math
-├── resources/
+├── scenarios/
 │   ├── schema.md                # JSONL schemas (read this first)
-│   ├── rooms.jsonl              # terminal-node catalog
-│   ├── areas.jsonl              # container catalog (with subgraphs)
-│   ├── monsters.jsonl           # BEASTS — fight / loot / evade
-│   ├── npcs.jsonl               # NPCs — hinder / neutral / help
-│   ├── factions.jsonl           # faction disposition matrix, territories
-│   ├── items.jsonl              # loot catalog
-│   └── hazards.jsonl            # traps & environmental dangers
+│   ├── _common/                 # scenario-agnostic catalogs
+│   │   ├── biomes.md            # canonical biome set
+│   │   ├── monsters.jsonl       # BEASTS — fight / loot / evade
+│   │   ├── items.jsonl          # loot catalog
+│   │   └── hazards.jsonl        # traps & environmental dangers
+│   └── <name>/                  # per-scenario world content
+│       ├── scenario.md          # pitch, tone, victory condition, hook
+│       ├── rooms.jsonl          # terminal-node catalog
+│       ├── areas.jsonl          # container catalog (with subgraphs)
+│       ├── factions.jsonl       # faction disposition matrix, territories
+│       ├── npcs.jsonl           # NPCs — hinder / neutral / help
+│       └── overrides.jsonl      # optional: scenario-local replacements
+│                                #   for monster/item/hazard entries
 ├── tools/
 │   ├── README.md                # tool contract (MCP-shaped)
 │   ├── look/                    # exploration verbs
@@ -166,7 +181,7 @@ roguebash/
 ## Contracts (canonical references)
 
 - JSONL schemas for rooms/areas/monsters/items/hazards:
-  `resources/schema.md`
+  `scenarios/schema.md`
 - Tool contract (entrypoint, `--schema`, stdin-JSON invocation):
   `tools/README.md`
 - State file schemas (character, world, ledger events):

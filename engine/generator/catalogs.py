@@ -1,4 +1,19 @@
-"""Load the resources/*.jsonl catalogs into plain Python dicts.
+"""Load the scenario JSONL catalogs into plain Python dicts.
+
+Catalogs live under `scenarios/`:
+
+    scenarios/_common/            — scenario-agnostic catalogs
+        monsters.jsonl            — bestiary, biome-tagged
+        items.jsonl               — loot and usables
+        hazards.jsonl             — traps and environmental perils
+    scenarios/<name>/             — one scenario's world content
+        rooms.jsonl               — terminal-node catalog
+        areas.jsonl               — container-node catalog
+        factions.jsonl            — who owns what
+        npcs.jsonl                — sentient denizens
+        overrides.jsonl           — optional: scenario-specific monster/item/
+                                    hazard replacements, merged by id with
+                                    the common catalogs (scenario wins)
 
 JSONL: one JSON object per line. Blank lines and lines prefixed with `#`
 are ignored. Malformed lines emit a warning on stderr but do NOT abort
@@ -13,22 +28,32 @@ JSONL files directly.
 from __future__ import annotations
 
 import json
+import random
 import sys
 from pathlib import Path
 from typing import Any, Iterable
 
 
-# Canonical catalog filenames. Order matters only for the stderr banner
-# in --verbose mode; the dict below is insertion-ordered.
-CATALOG_FILES: dict[str, str] = {
-    "areas": "areas.jsonl",
-    "rooms": "rooms.jsonl",
-    "factions": "factions.jsonl",
-    "npcs": "npcs.jsonl",
+# Catalogs that live under `_common/` and are reusable across scenarios.
+COMMON_FILES: dict[str, str] = {
     "monsters": "monsters.jsonl",
     "items": "items.jsonl",
     "hazards": "hazards.jsonl",
 }
+
+# Catalogs that live inside a specific `scenarios/<name>/` directory.
+SCENARIO_FILES: dict[str, str] = {
+    "areas": "areas.jsonl",
+    "rooms": "rooms.jsonl",
+    "factions": "factions.jsonl",
+    "npcs": "npcs.jsonl",
+}
+
+# Optional scenario-local overrides — entries here are merged on top of
+# the common catalogs, keyed by `id`. The loader routes each override
+# into the right bucket based on its id prefix (`monster.`, `item.`,
+# `hazard.`).
+OVERRIDES_FILE = "overrides.jsonl"
 
 
 class Catalogs:
@@ -124,15 +149,107 @@ def _to_map(entries: Iterable[dict[str, Any]], label: str) -> dict[str, dict[str
     return out
 
 
-def load_catalogs(resources_dir: Path) -> Catalogs:
-    """Parse every catalog under `resources_dir` and return a Catalogs bundle."""
-    raw = {k: _load_jsonl(resources_dir / fname) for k, fname in CATALOG_FILES.items()}
+def list_scenarios(scenarios_dir: Path) -> list[str]:
+    """Return a sorted list of scenario directory names under `scenarios_dir`.
+
+    Excludes `_common` and any hidden/underscore-prefixed entries. Sorted
+    alphabetically so callers relying on deterministic selection (e.g.
+    seed-based `--scenario random`) get a stable ordering.
+    """
+    if not scenarios_dir.is_dir():
+        return []
+    out: list[str] = []
+    for entry in scenarios_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        name = entry.name
+        if name.startswith("_") or name.startswith("."):
+            continue
+        out.append(name)
+    out.sort()
+    return out
+
+
+def pick_random_scenario(scenarios_dir: Path, rng: random.Random) -> str:
+    """Pick a scenario name deterministically from `rng`.
+
+    Raises RuntimeError if no scenarios are present. Using the caller's
+    seeded RNG keeps `--scenario random --seed N` reproducible.
+    """
+    names = list_scenarios(scenarios_dir)
+    if not names:
+        raise RuntimeError(f"No scenarios found under {scenarios_dir}")
+    return rng.choice(names)
+
+
+def load_catalogs(scenarios_dir: Path, scenario: str) -> Catalogs:
+    """Parse the common + scenario catalogs and return a Catalogs bundle.
+
+    Load order per content type:
+      1. Read `_common/<file>.jsonl` for monsters/items/hazards.
+      2. Read `<scenario>/<file>.jsonl` for areas/rooms/factions/npcs.
+      3. Read optional `<scenario>/overrides.jsonl`; its entries replace
+         the common entry with the same `id` (scenario wins). Overrides
+         are routed by id prefix (`monster.` / `item.` / `hazard.`).
+    """
+    common_dir = scenarios_dir / "_common"
+    scen_dir = scenarios_dir / scenario
+
+    if not scen_dir.is_dir():
+        raise RuntimeError(
+            f"scenario directory not found: {scen_dir} "
+            f"(available: {', '.join(list_scenarios(scenarios_dir)) or '—'})"
+        )
+
+    # Common catalogs.
+    monsters_map = _to_map(
+        _load_jsonl(common_dir / COMMON_FILES["monsters"]), "monsters.jsonl"
+    )
+    items_map = _to_map(
+        _load_jsonl(common_dir / COMMON_FILES["items"]), "items.jsonl"
+    )
+    hazards_map = _to_map(
+        _load_jsonl(common_dir / COMMON_FILES["hazards"]), "hazards.jsonl"
+    )
+
+    # Scenario catalogs.
+    areas_map = _to_map(
+        _load_jsonl(scen_dir / SCENARIO_FILES["areas"]), "areas.jsonl"
+    )
+    rooms_map = _to_map(
+        _load_jsonl(scen_dir / SCENARIO_FILES["rooms"]), "rooms.jsonl"
+    )
+    factions_map = _to_map(
+        _load_jsonl(scen_dir / SCENARIO_FILES["factions"]), "factions.jsonl"
+    )
+    npcs_map = _to_map(
+        _load_jsonl(scen_dir / SCENARIO_FILES["npcs"]), "npcs.jsonl"
+    )
+
+    # Optional overrides — scenario-specific replacements for
+    # monster/item/hazard entries. Keyed by id prefix. Missing file is fine.
+    overrides_path = scen_dir / OVERRIDES_FILE
+    if overrides_path.is_file():
+        for entry in _load_jsonl(overrides_path):
+            eid = entry["id"]
+            if eid.startswith("monster."):
+                monsters_map[eid] = entry
+            elif eid.startswith("item."):
+                items_map[eid] = entry
+            elif eid.startswith("hazard."):
+                hazards_map[eid] = entry
+            else:
+                _warn(
+                    f"overrides.jsonl: entry {eid!r} has unrecognized prefix "
+                    "(expected monster./item./hazard.) — skipped"
+                )
+
     return Catalogs(
-        areas=_to_map(raw["areas"], "areas.jsonl"),
-        rooms=_to_map(raw["rooms"], "rooms.jsonl"),
-        factions=_to_map(raw["factions"], "factions.jsonl"),
-        npcs=_to_map(raw["npcs"], "npcs.jsonl"),
-        monsters=_to_map(raw["monsters"], "monsters.jsonl"),
-        items=_to_map(raw["items"], "items.jsonl"),
-        hazards=_to_map(raw["hazards"], "hazards.jsonl"),
+        areas=areas_map,
+        rooms=rooms_map,
+        factions=factions_map,
+        npcs=npcs_map,
+        monsters=monsters_map,
+        items=items_map,
+        hazards=hazards_map,
     )

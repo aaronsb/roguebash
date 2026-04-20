@@ -26,9 +26,10 @@ from engine.generator.generate import generate
 from engine.generator.spawns import resolve_room_spawns
 
 
-# All tests run against the real resources/ directory of the repo.
-# The generator is a pure function of (seed, catalogs, macro_nodes).
-_RESOURCES = Path(__file__).resolve().parent.parent.parent / "resources"
+# All tests run against the real scenarios/ directory of the repo.
+# The generator is a pure function of (seed, scenario-catalogs, macro_nodes).
+_SCENARIOS = Path(__file__).resolve().parent.parent.parent / "scenarios"
+_SCENARIO = "barrow_swamp"
 
 
 def _bfs_reaches(
@@ -63,8 +64,8 @@ def _room_adjacency(graph: dict) -> dict[str, list[str]]:
 
 class TestDeterminism(unittest.TestCase):
     def test_same_seed_byte_identical(self) -> None:
-        g1 = generate(seed=42, resources_dir=_RESOURCES, macro_nodes=10)
-        g2 = generate(seed=42, resources_dir=_RESOURCES, macro_nodes=10)
+        g1 = generate(seed=42, scenarios_dir=_SCENARIOS, scenario=_SCENARIO, macro_nodes=10)
+        g2 = generate(seed=42, scenarios_dir=_SCENARIOS, scenario=_SCENARIO, macro_nodes=10)
         s1 = json.dumps(g1, indent=2, sort_keys=True, ensure_ascii=False)
         s2 = json.dumps(g2, indent=2, sort_keys=True, ensure_ascii=False)
         self.assertEqual(s1, s2)
@@ -72,8 +73,8 @@ class TestDeterminism(unittest.TestCase):
     def test_different_seeds_probably_differ(self) -> None:
         # Not strictly required by the spec, but guards against a bug
         # where we accidentally seed from a constant.
-        g1 = generate(seed=1, resources_dir=_RESOURCES, macro_nodes=10)
-        g2 = generate(seed=2, resources_dir=_RESOURCES, macro_nodes=10)
+        g1 = generate(seed=1, scenarios_dir=_SCENARIOS, scenario=_SCENARIO, macro_nodes=10)
+        g2 = generate(seed=2, scenarios_dir=_SCENARIOS, scenario=_SCENARIO, macro_nodes=10)
         s1 = json.dumps(g1, sort_keys=True)
         s2 = json.dumps(g2, sort_keys=True)
         self.assertNotEqual(s1, s2)
@@ -81,7 +82,7 @@ class TestDeterminism(unittest.TestCase):
 
 class TestSchemaShape(unittest.TestCase):
     def setUp(self) -> None:
-        self.graph = generate(seed=1234, resources_dir=_RESOURCES, macro_nodes=10)
+        self.graph = generate(seed=1234, scenarios_dir=_SCENARIOS, scenario=_SCENARIO, macro_nodes=10)
 
     def test_top_level_keys(self) -> None:
         for key in ("seed", "macro", "rooms", "start_area", "goal_area"):
@@ -114,7 +115,7 @@ class TestSchemaShape(unittest.TestCase):
 
 class TestMacroIntegrity(unittest.TestCase):
     def test_bfs_start_to_goal_via_rooms(self) -> None:
-        graph = generate(seed=7, resources_dir=_RESOURCES, macro_nodes=10)
+        graph = generate(seed=7, scenarios_dir=_SCENARIOS, scenario=_SCENARIO, macro_nodes=10)
         adj = _room_adjacency(graph)
         self.assertTrue(
             _bfs_reaches(adj, graph["start_room"], graph["goal_room"]),
@@ -125,7 +126,7 @@ class TestMacroIntegrity(unittest.TestCase):
         """For each macro area entry, its declared entrance/exit rooms
         must exist in the global rooms dict (since those are the only
         rooms the macro layer can cross through)."""
-        graph = generate(seed=99, resources_dir=_RESOURCES, macro_nodes=10)
+        graph = generate(seed=99, scenarios_dir=_SCENARIOS, scenario=_SCENARIO, macro_nodes=10)
         rooms = graph["rooms"]
         for entry in graph["macro"]:
             aid = entry["id"]
@@ -137,7 +138,7 @@ class TestMacroIntegrity(unittest.TestCase):
                 self.assertIn(neigh, ids_in_macro, f"{aid}: neighbor {neigh} not in macro")
 
     def test_every_room_exit_is_a_real_room(self) -> None:
-        graph = generate(seed=11, resources_dir=_RESOURCES, macro_nodes=10)
+        graph = generate(seed=11, scenarios_dir=_SCENARIOS, scenario=_SCENARIO, macro_nodes=10)
         rooms = graph["rooms"]
         for rid, room in rooms.items():
             for d, target in room["exits"].items():
@@ -149,7 +150,7 @@ class TestMacroIntegrity(unittest.TestCase):
         """Each macro area's declared entrance/exit rooms must be
         attributed to that area in the rooms dict. Regression guard
         against silent room-sharing between areas."""
-        graph = generate(seed=42, resources_dir=_RESOURCES, macro_nodes=10)
+        graph = generate(seed=42, scenarios_dir=_SCENARIOS, scenario=_SCENARIO, macro_nodes=10)
         for entry in graph["macro"]:
             aid = entry["id"]
             eid = entry["entrance_room"]
@@ -168,15 +169,15 @@ class TestMacroIntegrity(unittest.TestCase):
 
 class TestFactionRefs(unittest.TestCase):
     def test_faction_refs_resolve(self) -> None:
-        graph = generate(seed=55, resources_dir=_RESOURCES, macro_nodes=10)
-        cat = load_catalogs(_RESOURCES)
+        graph = generate(seed=55, scenarios_dir=_SCENARIOS, scenario=_SCENARIO, macro_nodes=10)
+        cat = load_catalogs(_SCENARIOS, _SCENARIO)
         for aid, info in graph["factions"].items():
             for fid in info["claimed_by"]:
                 self.assertIn(fid, cat.factions, f"{aid}: unknown faction {fid}")
 
     def test_every_populated_npc_exists(self) -> None:
-        graph = generate(seed=56, resources_dir=_RESOURCES, macro_nodes=10)
-        cat = load_catalogs(_RESOURCES)
+        graph = generate(seed=56, scenarios_dir=_SCENARIOS, scenario=_SCENARIO, macro_nodes=10)
+        cat = load_catalogs(_SCENARIOS, _SCENARIO)
         for rid, room in graph["rooms"].items():
             for npc_id in room["npcs"]:
                 self.assertIn(npc_id, cat.npcs, f"{rid}: unknown npc {npc_id}")
@@ -227,27 +228,62 @@ class TestMissingRefsTolerated(unittest.TestCase):
         self.assertNotIn("item.DOES_NOT_EXIST", refs)
 
     def test_malformed_jsonl_line_does_not_crash_load(self) -> None:
-        # Write a tmp resources dir with one broken line and verify load.
+        # Write a tmp scenarios dir with one broken line and verify load.
         import tempfile
         from pathlib import Path as _P
 
         with tempfile.TemporaryDirectory() as tmp:
             root = _P(tmp)
-            (root / "areas.jsonl").write_text(
+            common = root / "_common"
+            scen = root / "demo"
+            common.mkdir()
+            scen.mkdir()
+            (scen / "areas.jsonl").write_text(
                 '{"id":"area.x","type":"area","name":"x","biome":"forest",'
                 '"tier":0,"tags":[],"compatible_with":[],'
                 '"rooms":{"min":1,"max":1,"pool":[]},'
                 '"entrance_rooms":[],"exit_rooms":[]}\n'
                 "{not valid json\n"
             )
-            (root / "rooms.jsonl").write_text("")
-            (root / "factions.jsonl").write_text("")
-            (root / "npcs.jsonl").write_text("")
-            (root / "monsters.jsonl").write_text("")
-            (root / "items.jsonl").write_text("")
-            (root / "hazards.jsonl").write_text("")
-            cat = load_catalogs(root)
+            (scen / "rooms.jsonl").write_text("")
+            (scen / "factions.jsonl").write_text("")
+            (scen / "npcs.jsonl").write_text("")
+            (common / "monsters.jsonl").write_text("")
+            (common / "items.jsonl").write_text("")
+            (common / "hazards.jsonl").write_text("")
+            cat = load_catalogs(root, "demo")
             self.assertIn("area.x", cat.areas)
+
+    def test_overrides_replace_common_entries_by_id(self) -> None:
+        # Write a tmp scenarios layout with an overrides.jsonl that
+        # redefines a common item. Scenario entry should win.
+        import tempfile
+        from pathlib import Path as _P
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _P(tmp)
+            common = root / "_common"
+            scen = root / "demo"
+            common.mkdir()
+            scen.mkdir()
+            (common / "monsters.jsonl").write_text("")
+            (common / "hazards.jsonl").write_text("")
+            (common / "items.jsonl").write_text(
+                '{"id":"item.lantern","name":"common lantern","tier":0,'
+                '"tags":["light"],"weight":2,"short_desc":"plain"}\n'
+            )
+            (scen / "areas.jsonl").write_text("")
+            (scen / "rooms.jsonl").write_text("")
+            (scen / "factions.jsonl").write_text("")
+            (scen / "npcs.jsonl").write_text("")
+            (scen / "overrides.jsonl").write_text(
+                '{"id":"item.lantern","name":"scenario lantern","tier":0,'
+                '"tags":["light","unique"],"weight":2,"short_desc":"special"}\n'
+            )
+            cat = load_catalogs(root, "demo")
+            self.assertIn("item.lantern", cat.items)
+            self.assertEqual(cat.items["item.lantern"]["name"], "scenario lantern")
+            self.assertIn("unique", cat.items["item.lantern"]["tags"])
 
 
 class TestCompat(unittest.TestCase):
