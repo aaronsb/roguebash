@@ -14,20 +14,15 @@ Subcommands:
 
 Reads optional config from $XDG_CONFIG_HOME/roguebash/delve.toml or
 ./delve.toml. CLI flags override config.
+
+Implementation lives in engine.cli.*; this file is just argparse +
+dispatch.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
-import os
-import random as _random
-import shutil
-import subprocess
 import sys
-import tomllib
-import types
-import urllib.request
 from pathlib import Path
 
 # Make the repo root importable so `from engine...` works when `delve`
@@ -37,416 +32,8 @@ _REPO_ROOT = _THIS.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from engine.generator.generate import generate  # noqa: E402
-from engine.prompt.compose import build_system_prompt  # noqa: E402
-from engine.state import archive as _archive  # noqa: E402
-from engine.state import ledger as _ledger  # noqa: E402
-from engine.state.io import load_json, save_json  # noqa: E402
-from engine.state.paths import (  # noqa: E402
-    CHARACTER_FILE,
-    GRAPH_FILE,
-    LEDGER_FILE,
-    WORLD_FILE,
-    list_runs,
-    make_run_id,
-    run_dir as _run_dir,
-    state_root,
-)
-
-
-# =====================================================================
-# Config loading
-# =====================================================================
-
-
-DEFAULT_CONFIG: dict = {
-    "agent": {
-        "adapter": "local",
-        "max_turns": 12,
-        # The llama.cpp-compatible endpoint delve probes before starting
-        # a run. Override in delve.toml if your adapter points elsewhere.
-        "endpoint": "127.0.0.1:8765",
-    },
-    "generator": {"default_scenario": "barrow_swamp", "default_macro_nodes": 10},
-}
-
-
-def load_config() -> dict:
-    cfg = {k: dict(v) for k, v in DEFAULT_CONFIG.items()}
-    candidates = []
-    xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    candidates.append(Path(xdg) / "roguebash" / "delve.toml")
-    candidates.append(_REPO_ROOT / "delve.toml")
-    for p in candidates:
-        if p.is_file():
-            try:
-                with p.open("rb") as fh:
-                    user = tomllib.load(fh)
-                for section, values in user.items():
-                    cfg.setdefault(section, {}).update(values)
-            except Exception as e:
-                print(f"delve: ignoring malformed config at {p}: {e}", file=sys.stderr)
-    return cfg
-
-
-# =====================================================================
-# Character creation (tier-0 placeholder — not full 5e)
-# =====================================================================
-
-
-_CLASS_DEFAULTS = {
-    "ranger":   {"hit_die": 10, "proficiencies": ["longbow", "shortsword", "stealth", "survival"]},
-    "fighter":  {"hit_die": 10, "proficiencies": ["longsword", "heavy armor", "athletics"]},
-    "rogue":    {"hit_die": 8,  "proficiencies": ["shortsword", "stealth", "sleight of hand"]},
-    "wizard":   {"hit_die": 6,  "proficiencies": ["arcana", "investigation"]},
-    "cleric":   {"hit_die": 8,  "proficiencies": ["mace", "medium armor", "religion"]},
-}
-_RACE_DEFAULTS = {
-    "halfling":  {"speed": 25},
-    "human":     {"speed": 30},
-    "dwarf":     {"speed": 25},
-    "elf":       {"speed": 30},
-    "half-orc":  {"speed": 30},
-    "gnome":     {"speed": 25},
-}
-_STANDARD_ARRAY = [15, 14, 13, 12, 10, 8]
-
-
-def _make_character(name: str, race: str, cls: str) -> dict:
-    race = race.lower()
-    cls = cls.lower()
-    cd = _CLASS_DEFAULTS.get(cls, _CLASS_DEFAULTS["ranger"])
-    rd = _RACE_DEFAULTS.get(race, _RACE_DEFAULTS["human"])
-    if cls in ("ranger", "rogue"):
-        stats_order = ["dex", "wis", "con", "str", "int", "cha"]
-    elif cls in ("wizard",):
-        stats_order = ["int", "wis", "con", "dex", "cha", "str"]
-    elif cls in ("cleric",):
-        stats_order = ["wis", "cha", "con", "str", "dex", "int"]
-    else:
-        stats_order = ["str", "con", "dex", "wis", "int", "cha"]
-    stats = dict(zip(stats_order, _STANDARD_ARRAY))
-    con_mod = (stats["con"] - 10) // 2
-    hp_max = cd["hit_die"] + con_mod
-    return {
-        "name": name,
-        "race": race,
-        "class": cls,
-        "level": 1,
-        "xp": 0,
-        "stats": stats,
-        "hp": {"current": hp_max, "max": hp_max},
-        "ac": 10 + max((stats["dex"] - 10) // 2, 0),
-        "speed": rd["speed"],
-        "proficiencies": cd["proficiencies"],
-        "inventory": [],
-        "status_effects": [],
-        "gold": 0,
-    }
-
-
-def _opening_hook(repo_root: Path, scenario: str) -> str:
-    p = repo_root / "scenarios" / scenario / "scenario.md"
-    if not p.is_file():
-        return f"You begin your run in the {scenario} scenario."
-    try:
-        text = p.read_text(encoding="utf-8")
-    except Exception:
-        return ""
-    lines = text.splitlines()
-    collecting = False
-    hook: list[str] = []
-    for line in lines:
-        if line.strip().lower().startswith("## hook"):
-            collecting = True
-            continue
-        if collecting:
-            if line.strip().startswith("## "):
-                break
-            if line.lstrip().startswith(">"):
-                hook.append(line.lstrip()[1:].strip())
-            elif not line.strip() and hook:
-                break
-    return " ".join(h for h in hook if h) or f"Your run begins in the {scenario} scenario."
-
-
-# =====================================================================
-# Subcommands
-# =====================================================================
-
-
-def _check_endpoint(config: dict) -> tuple[bool, str]:
-    """Probe the configured llama.cpp endpoint. Returns (up, endpoint)."""
-    endpoint = config["agent"].get("endpoint", "127.0.0.1:8765")
-    try:
-        req = urllib.request.Request(f"http://{endpoint}/health")
-        with urllib.request.urlopen(req, timeout=2) as r:
-            data = r.read().decode("utf-8", "replace").lower()
-            if "ok" in data:
-                return True, endpoint
-    except Exception:
-        pass
-    return False, endpoint
-
-
-def _create_run(args: argparse.Namespace, config: dict) -> str:
-    """The body of `delve new` without the final print — returns run_id."""
-    seed = args.seed if args.seed is not None else _random.randrange(1, 2**31)
-    scenario = args.scenario or config["generator"]["default_scenario"]
-    macro_nodes = args.macro_nodes or config["generator"]["default_macro_nodes"]
-    name = args.name or "Wanderer"
-
-    if scenario == "random":
-        scenarios_dir = _REPO_ROOT / "scenarios"
-        candidates = sorted(
-            p.name for p in scenarios_dir.iterdir()
-            if p.is_dir() and not p.name.startswith(("_", "."))
-        )
-        if not candidates:
-            raise RuntimeError("no scenarios found under scenarios/")
-        scenario = _random.Random(seed).choice(candidates)
-
-    graph = generate(
-        seed=seed,
-        scenarios_dir=_REPO_ROOT / "scenarios",
-        scenario=scenario,
-        macro_nodes=macro_nodes,
-        verbose=False,
-    )
-
-    run_id = make_run_id(seed, name)
-    rd = _run_dir(run_id)
-    rd.mkdir(parents=True, exist_ok=True)
-
-    save_json(rd / GRAPH_FILE, graph)
-
-    character = _make_character(name=name, race=args.race, cls=getattr(args, "cls"))
-    save_json(rd / CHARACTER_FILE, character)
-
-    start_room = graph.get("start_room")
-    world = {
-        "current_room": start_room,
-        "mode": "exploration",
-        "turn": 0,
-        "revealed": {},
-    }
-    save_json(rd / WORLD_FILE, world)
-
-    hook = _opening_hook(_REPO_ROOT, scenario)
-    _ledger.narration(rd, 0, hook)
-
-    return run_id
-
-
-def cmd_new(args: argparse.Namespace, config: dict) -> int:
-    try:
-        run_id = _create_run(args, config)
-    except Exception as e:
-        print(f"delve: {e}", file=sys.stderr)
-        return 1
-    print(run_id)
-    return 0
-
-
-def cmd_start(args: argparse.Namespace, config: dict) -> int:
-    """Easy-mode launcher: check backend, new-or-resume, play."""
-    # 1. Backend presence.
-    up, endpoint = _check_endpoint(config)
-    if not up:
-        print(
-            f"delve: no llama.cpp-compatible endpoint reachable at {endpoint}",
-            file=sys.stderr,
-        )
-        print("delve needs a running LLM backend. If you installed agent-bash:", file=sys.stderr)
-        print("    askd start", file=sys.stderr)
-        print(
-            "Otherwise, start your adapter's backend before running `delve start`.",
-            file=sys.stderr,
-        )
-        return 1
-    print(f"[backend ok at {endpoint}]")
-
-    # 2. Existing alive run? — helpful diversion, don't overwrite.
-    alive = [rid for rid, st in list_runs() if st == "alive"]
-    if alive:
-        alive.sort(key=lambda rid: _run_dir(rid).stat().st_mtime, reverse=True)
-        most_recent = alive[0]
-        print()
-        print(f"You already have an ongoing run: {most_recent}")
-        print()
-        print(f"    delve play               # resume it")
-        print(f"    delve abandon {most_recent}")
-        print(f"    delve start              # start fresh after abandoning")
-        return 0
-
-    # 3. No alive run — make one with defaults and play.
-    default_new = types.SimpleNamespace(
-        scenario=None,
-        seed=None,
-        name="Wanderer",
-        cls="ranger",
-        race="halfling",
-        macro_nodes=None,
-    )
-    try:
-        run_id = _create_run(default_new, config)
-    except Exception as e:
-        print(f"delve: failed to create run: {e}", file=sys.stderr)
-        return 1
-    print(f"[new run: {run_id}]")
-    print()
-
-    play_args = types.SimpleNamespace(run_id=run_id)
-    return cmd_play(play_args, config)
-
-
-def cmd_list(args: argparse.Namespace, config: dict) -> int:
-    runs = list_runs()
-    if not runs:
-        print("(no runs)")
-        return 0
-    for run_id, status in runs:
-        rd = _run_dir(run_id) if status == "alive" else state_root() / "_archive" / run_id
-        name = "?"
-        current = "?"
-        try:
-            ch = load_json(rd / CHARACTER_FILE)
-            name = ch.get("name", "?")
-        except Exception:
-            pass
-        try:
-            w = load_json(rd / WORLD_FILE)
-            current = w.get("current_room", "?")
-        except Exception:
-            pass
-        print(f"{status:6s}  {run_id:45s}  {name:20s}  {current}")
-    return 0
-
-
-def _resolve_run_id(explicit: str | None) -> str | None:
-    if explicit:
-        return explicit
-    alive = [rid for rid, st in list_runs() if st == "alive"]
-    if not alive:
-        return None
-    alive.sort(key=lambda rid: _run_dir(rid).stat().st_mtime, reverse=True)
-    return alive[0]
-
-
-def cmd_show(args: argparse.Namespace, config: dict) -> int:
-    run_id = _resolve_run_id(args.run_id)
-    if not run_id:
-        print("delve: no alive runs to show", file=sys.stderr)
-        return 1
-    rd = _run_dir(run_id)
-    if not rd.is_dir():
-        rd = state_root() / "_archive" / run_id
-    if not rd.is_dir():
-        print(f"delve: run not found: {run_id}", file=sys.stderr)
-        return 1
-    ch = load_json(rd / CHARACTER_FILE)
-    w = load_json(rd / WORLD_FILE)
-    print(f"=== run {run_id} ===")
-    print(json.dumps(ch, indent=2))
-    print()
-    print(f"Mode: {w.get('mode')}    Turn: {w.get('turn')}    Current room: {w.get('current_room')}")
-    return 0
-
-
-def cmd_abandon(args: argparse.Namespace, config: dict) -> int:
-    run_id = args.run_id
-    rd = _run_dir(run_id)
-    if not rd.is_dir():
-        print(f"delve: no live run named {run_id}", file=sys.stderr)
-        return 1
-    resp = input(f"delete {rd}? [y/N] ").strip().lower()
-    if resp != "y":
-        print("aborted")
-        return 0
-    shutil.rmtree(rd)
-    print(f"deleted {run_id}")
-    return 0
-
-
-def cmd_play(args: argparse.Namespace, config: dict) -> int:
-    run_id = _resolve_run_id(args.run_id)
-    if not run_id:
-        print("delve: no alive runs. Start one with `delve new`.", file=sys.stderr)
-        return 1
-    rd = _run_dir(run_id)
-    if not rd.is_dir():
-        print(f"delve: run not found: {run_id}", file=sys.stderr)
-        return 1
-
-    adapter_name = config["agent"]["adapter"]
-    adapter_path = _REPO_ROOT / "adapters" / adapter_name / "run"
-    if not adapter_path.is_file():
-        print(f"delve: adapter not found: {adapter_path}", file=sys.stderr)
-        return 1
-    max_turns = int(config["agent"]["max_turns"])
-
-    print(f"playing {run_id} — Ctrl-C to save and quit.\n")
-    try:
-        while True:
-            w = load_json(rd / WORLD_FILE)
-            turn = int(w.get("turn", 0)) + 1
-
-            system_prompt = build_system_prompt(rd, _REPO_ROOT)
-
-            try:
-                user_msg = input("> ")
-            except EOFError:
-                print()
-                return 0
-
-            env = os.environ.copy()
-            env["ROGUEBASH_SYSTEM_PROMPT"] = system_prompt
-            env["ROGUEBASH_USER_MESSAGE"] = user_msg
-            env["ROGUEBASH_TOOLS_DIR"] = str(_REPO_ROOT / "tools")
-            env["ROGUEBASH_RUN_DIR"] = str(rd)
-            env["ROGUEBASH_SCENARIOS"] = str(_REPO_ROOT / "scenarios")
-            env["ROGUEBASH_MAX_TURNS"] = str(max_turns)
-
-            proc = subprocess.run(
-                [str(adapter_path)], env=env, capture_output=True, text=True
-            )
-            narration = (proc.stdout or "").strip()
-            if proc.returncode != 0:
-                print(
-                    f"[adapter {adapter_name} exited {proc.returncode}] "
-                    f"{(proc.stderr or '').strip()[:400]}",
-                    file=sys.stderr,
-                )
-            if narration:
-                print(narration + "\n")
-                _ledger.narration(rd, turn, narration)
-
-            w["turn"] = turn
-            save_json(rd / WORLD_FILE, w)
-
-            recent = _ledger.tail(rd / LEDGER_FILE, n=10)
-            for e in reversed(recent):
-                if e.get("type") == "death":
-                    print("\n[you have died.]")
-                    _archive.archive_run(run_id, cause="death")
-                    return 0
-                if e.get("type") == "victory":
-                    print("\n[you have won.]")
-                    _archive.archive_run(run_id, cause="victory")
-                    return 0
-    except KeyboardInterrupt:
-        print("\n[save + exit]")
-        return 0
-
-
-def cmd_help(args: argparse.Namespace, config: dict) -> int:
-    print(__doc__.strip())
-    return 0
-
-
-# =====================================================================
-# argparse + dispatch
-# =====================================================================
+from engine.cli import commands  # noqa: E402
+from engine.cli.config import load_config  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -475,29 +62,30 @@ def build_parser() -> argparse.ArgumentParser:
     abandon.add_argument("run_id")
 
     sub.add_parser("help", add_help=False)
-
     return p
+
+
+_DISPATCH = {
+    "start":   commands.cmd_start,
+    "new":     commands.cmd_new,
+    "play":    commands.cmd_play,
+    "list":    commands.cmd_list,
+    "show":    commands.cmd_show,
+    "abandon": commands.cmd_abandon,
+}
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    cfg = load_config()
+    args = build_parser().parse_args(argv)
+    cfg = load_config(_REPO_ROOT)
 
-    if args.cmd == "start":
-        return cmd_start(args, cfg)
-    if args.cmd == "new":
-        return cmd_new(args, cfg)
-    if args.cmd == "play":
-        return cmd_play(args, cfg)
-    if args.cmd == "list":
-        return cmd_list(args, cfg)
-    if args.cmd == "show":
-        return cmd_show(args, cfg)
-    if args.cmd == "abandon":
-        return cmd_abandon(args, cfg)
-    return cmd_help(args, cfg)
+    if args.cmd in _DISPATCH:
+        return _DISPATCH[args.cmd](args, cfg, _REPO_ROOT)
+
+    # help / no subcommand
+    print(__doc__.strip())
+    return 0
 
 
 if __name__ == "__main__":
