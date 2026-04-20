@@ -1,17 +1,26 @@
 #!/bin/bash
-# character_sheet — TODO: implement (see tools/README.md for the contract)
+# character_sheet — dump the PC's sheet as terminal-readable text.
+#
+# Read-only; emits no ledger event. Contract: tools/README.md.
+# Impl: tools/character_sheet/_impl.py.
 set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
 
 if [ "${1:-}" = "--schema" ]; then
   cat <<'JSON'
 {
   "name": "character_sheet",
-  "description": "TODO: describe what this tool does",
-  "parameters": { "type": "object", "properties": {}, "required": [] }
+  "description": "Render the player character's full sheet as human-readable text: name, class, level, HP, AC, stats with modifiers, proficiencies, status effects, and inventory with weapon damage where applicable. Read-only.",
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
 }
 JSON
   exit 0
 fi
 
-echo "character_sheet: not yet implemented" >&2
-exit 2
+exec env PYTHONPATH="$ROOT" python3 "$HERE/_impl.py"

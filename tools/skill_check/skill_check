@@ -1,17 +1,49 @@
 #!/bin/bash
-# skill_check — TODO: implement (see tools/README.md for the contract)
+# skill_check — roll d20 + ability mod (+ proficiency) against a DC.
+#
+# See tools/README.md for the contract and tools/skill_check/_impl.py
+# for the implementation. The bash wrapper is deliberately tiny:
+# handles --schema, then hands stdin off to the python helper.
 set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
 
 if [ "${1:-}" = "--schema" ]; then
   cat <<'JSON'
 {
   "name": "skill_check",
-  "description": "TODO: describe what this tool does",
-  "parameters": { "type": "object", "properties": {}, "required": [] }
+  "description": "Roll a 5e ability check: d20 + ability modifier + proficiency bonus (if proficient) vs a DC. Pass/fail is reported on total >= DC. Advantage/disadvantage roll two dice and keep the higher/lower.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "ability": {
+        "type": "string",
+        "enum": ["str", "dex", "con", "int", "wis", "cha"],
+        "description": "Which ability governs the check."
+      },
+      "dc": {
+        "type": "integer",
+        "description": "Difficulty class. Typical 5e values: 10 easy, 15 medium, 20 hard, 25 very hard."
+      },
+      "proficient": {
+        "type": "boolean",
+        "description": "Add the character's proficiency bonus. Defaults to false."
+      },
+      "advantage": {
+        "type": "boolean",
+        "description": "Roll 2d20 and keep the higher. Defaults to false."
+      },
+      "disadvantage": {
+        "type": "boolean",
+        "description": "Roll 2d20 and keep the lower. Defaults to false."
+      }
+    },
+    "required": ["ability", "dc"]
+  }
 }
 JSON
   exit 0
 fi
 
-echo "skill_check: not yet implemented" >&2
-exit 2
+exec env PYTHONPATH="$ROOT" python3 "$HERE/_impl.py"
