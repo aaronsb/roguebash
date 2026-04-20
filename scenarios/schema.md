@@ -1,8 +1,20 @@
-# resources/schema.md — JSONL catalog schemas
+# scenarios/schema.md — JSONL catalog schemas
 
-Every catalog file under `resources/` is a JSONL (one JSON object per line,
+Every catalog file under `scenarios/` is a JSONL (one JSON object per line,
 no outer array). Objects are free to carry additional fields beyond the
 schema, but these are the required / well-known ones.
+
+Content is split across two tiers:
+
+- `scenarios/_common/` holds scenario-agnostic catalogs (monsters, items,
+  hazards — biome-tagged and reusable).
+- `scenarios/<name>/` holds one scenario's world content (rooms, areas,
+  factions, npcs, plus an optional `overrides.jsonl` that replaces
+  common entries by id).
+
+See `scenarios/_common/biomes.md` for the canonical biome set and
+`scenarios/<name>/scenario.md` for that scenario's pitch, tone, and
+victory condition.
 
 Seeds are deterministic: the generator re-reads these files at `delve new`
 time, shuffles with the run seed, and writes `graph.json` into the run's

@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .catalogs import load_catalogs
+from .catalogs import list_scenarios, load_catalogs, pick_random_scenario
 from .factions import populate_area
 from .macro import bfs_path_exists, build_macro
 from .micro import instantiate_area
@@ -28,7 +28,8 @@ from .spawns import apply_setpieces, resolve_room_spawns
 
 # The default `--macro-nodes` target. Task says 8–15 is the range.
 DEFAULT_MACRO_NODES = 10
-DEFAULT_RESOURCES = Path("resources")
+DEFAULT_SCENARIOS = Path("scenarios")
+DEFAULT_SCENARIO = "barrow_swamp"
 
 
 def _verbose(enabled: bool, msg: str) -> None:
@@ -38,19 +39,20 @@ def _verbose(enabled: bool, msg: str) -> None:
 
 def generate(
     seed: int,
-    resources_dir: Path,
+    scenarios_dir: Path,
+    scenario: str = DEFAULT_SCENARIO,
     macro_nodes: int = DEFAULT_MACRO_NODES,
     verbose: bool = False,
 ) -> dict[str, Any]:
-    """Produce the full `graph.json` dict for a given seed.
+    """Produce the full `graph.json` dict for a given seed + scenario.
 
     Returns a dict that can be serialized with `json.dumps(..., sort_keys=True)`
     for byte-identical output across runs.
     """
     rng = random.Random(seed)
 
-    _verbose(verbose, f"loading catalogs from {resources_dir}")
-    cat = load_catalogs(resources_dir)
+    _verbose(verbose, f"loading catalogs from {scenarios_dir}/{scenario}")
+    cat = load_catalogs(scenarios_dir, scenario)
 
     _verbose(
         verbose,
@@ -305,6 +307,7 @@ def generate(
     # ------------------------------------------------------------------
     graph = {
         "seed": seed,
+        "scenario": scenario,
         "start_area": start_area,
         "goal_area": goal_area,
         "start_room": layouts[start_area]["entrance"],
@@ -332,7 +335,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="python3 -m engine.generator",
         description=(
             "Procedurally generate a roguebash world (graph.json) from the "
-            "resources/ JSONL catalogs. Fully deterministic given --seed."
+            "scenarios/ JSONL catalogs. Fully deterministic given --seed."
         ),
     )
     p.add_argument(
@@ -340,6 +343,16 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Integer seed. Defaults to a random value, echoed on stderr.",
+    )
+    p.add_argument(
+        "--scenario",
+        type=str,
+        default=DEFAULT_SCENARIO,
+        help=(
+            f"Scenario directory name under --scenarios-dir "
+            f"(default: {DEFAULT_SCENARIO!r}). Use 'random' to pick one "
+            "deterministically from the seed."
+        ),
     )
     p.add_argument(
         "--macro-nodes",
@@ -354,10 +367,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output path. Defaults to stdout ('-').",
     )
     p.add_argument(
-        "--resources",
+        "--scenarios-dir",
         type=str,
-        default=str(DEFAULT_RESOURCES),
-        help="Path to the resources/ directory containing the JSONL catalogs.",
+        default=str(DEFAULT_SCENARIOS),
+        help="Path to the scenarios/ directory (holds _common/ and per-scenario dirs).",
     )
     p.add_argument(
         "--verbose",
@@ -384,10 +397,33 @@ def main(argv: list[str] | None = None) -> int:
         seed = _choose_seed()
         print(f"[engine.generator] chose seed: {seed}", file=sys.stderr)
 
-    resources = Path(args.resources).expanduser().resolve()
-    if not resources.is_dir():
+    scenarios_dir = Path(args.scenarios_dir).expanduser().resolve()
+    if not scenarios_dir.is_dir():
         print(
-            f"[engine.generator] error: --resources dir does not exist: {resources}",
+            f"[engine.generator] error: --scenarios-dir does not exist: {scenarios_dir}",
+            file=sys.stderr,
+        )
+        return 2
+
+    # `--scenario random` picks deterministically from the same seed that
+    # drives the rest of the run. Same seed → same scenario → same world.
+    scenario = args.scenario
+    if scenario == "random":
+        picker = random.Random(seed)
+        try:
+            scenario = pick_random_scenario(scenarios_dir, picker)
+        except RuntimeError as exc:
+            print(f"[engine.generator] error: {exc}", file=sys.stderr)
+            return 2
+        print(
+            f"[engine.generator] --scenario random → {scenario!r} (from seed {seed})",
+            file=sys.stderr,
+        )
+    elif scenario not in list_scenarios(scenarios_dir):
+        available = ", ".join(list_scenarios(scenarios_dir)) or "—"
+        print(
+            f"[engine.generator] error: scenario {scenario!r} not found under "
+            f"{scenarios_dir} (available: {available})",
             file=sys.stderr,
         )
         return 2
@@ -395,7 +431,8 @@ def main(argv: list[str] | None = None) -> int:
     t0 = time.monotonic()
     graph = generate(
         seed=seed,
-        resources_dir=resources,
+        scenarios_dir=scenarios_dir,
+        scenario=scenario,
         macro_nodes=args.macro_nodes,
         verbose=args.verbose,
     )

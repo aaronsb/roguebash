@@ -23,7 +23,7 @@ calls and the model's response at 16k context.
 
 ## Prose bubbling (load-bearing contract)
 
-Every catalog entry in `resources/*.jsonl` carries prose fields that
+Every catalog entry in `scenarios/**/*.jsonl` carries prose fields that
 exist **for one reason**: to surface into the system prompt when that
 entity is contextually relevant. Authors write evocative short lines
 because that's what the model will see.

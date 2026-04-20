@@ -1,7 +1,9 @@
 # engine/generator — world procgen
 
 Inputs:
-- `resources/rooms.jsonl`, `resources/areas.jsonl` (catalogs)
+- `scenarios/_common/*.jsonl` (monsters, items, hazards)
+- `scenarios/<name>/*.jsonl` (rooms, areas, factions, npcs; optional overrides)
+- `--scenario <name>` (default `barrow_swamp`; `random` picks deterministically from the seed)
 - `--seed N` (integer)
 - target size: number of macro nodes
 

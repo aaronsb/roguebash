@@ -1,6 +1,6 @@
 """Faction-aware NPC population.
 
-Three regimes, per `resources/schema.md` and the generator task spec:
+Three regimes, per `scenarios/schema.md` and the generator task spec:
 
 - `home_areas`: every inhabitant drawn from the faction's `population_mix`.
 - `territories`: mixed — faction agents plus "local" NPCs. We model
