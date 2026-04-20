@@ -135,6 +135,7 @@ HP can be an integer (fixed) or a dice expression; rolled at spawn.
   "tier": 1,
   "disposition_default": "hostile",
   "faction_default": "faction.red_hollow",
+  "alignment": "CE",
   "ac": 12,
   "hp": "11 (2d8+2)",
   "stats": { "str": 11, "dex": 14, "con": 12, "int": 10, "wis": 10, "cha": 10 },
@@ -161,8 +162,18 @@ HP can be an integer (fixed) or a dice expression; rolled at spawn.
 | `role` | `bandit`, `blacksmith`, `farmer`, `guard`, `merchant`, `hermit`, `cultist`, `scout`, `innkeeper`, `priest`, ... |
 | `disposition_default` | `hostile`, `wary`, `neutral`, `friendly` — can be overridden by the encounter context (e.g. a normally-friendly farmer is hostile if you just burned his barn) |
 | `faction_default` | `faction.*` id, or `null` for unaligned wanderers |
+| `alignment` | Optional two-letter 5e shorthand (`LG`/`NG`/`CG`/`LN`/`TN`/`CN`/`LE`/`NE`/`CE`). **Flavor hint, not script.** See below. |
 | `dialog_hooks` | 2–5 one-line prompts the DM can use to drive the NPC's voice. Not literal dialog — hooks for improvisation. |
 | `loot_table` | item refs dropped on death (looted only; no gamey "corpses contain 5gp" — make it flavored) |
+
+**On alignment:** it's a shorthand for tendency and tone — a single anchor
+the DM prompt can lean on when improvising. Tools never read it; the
+generator reads it only as a weak preference signal (a CE faction slightly
+prefers CE/NE/LE members, nothing hard). **If disposition, role, or the
+situation conflicts with alignment, the situation wins.** A "lawful-good"
+guard captain will still shake down travelers if his faction is corrupt and
+his family is hungry; a "chaotic-evil" bandit will still spare the child
+who reminds him of his sister. Alignment steers, it does not dictate.
 
 ---
 
@@ -180,6 +191,7 @@ disposition do the routing.
   "id": "faction.red_hollow",
   "name": "Red Hollow Bandits",
   "tier": 2,
+  "alignment": "CE",
   "description": "Former coachmen turned brigands after the western trade road collapsed. They extort the swampland villages and ambush what little traffic still uses the old highway.",
   "home_areas": ["area.red_hollow_camp"],
   "territories": ["area.barrow_swamp", "area.old_highway"],
@@ -207,6 +219,7 @@ disposition do the routing.
 | `roles` | which `role` values in `npcs.jsonl` this faction recruits from |
 | `relations.player_default` | `hostile` / `wary` / `neutral` / `friendly` — starting disposition on first contact |
 | `relations.<other_faction>` | `hostile` / `rival` / `neutral` / `allied` / `dominating` / `fearful` — two-way relationships; the generator uses this to decide secondary tensions in shared areas |
+| `alignment` | Optional 5e two-letter shorthand for the faction's prevailing tone. Same "flavor hint, not script" rule as for NPCs — a CE faction can still have principled outliers; they're the narrative interesting ones. |
 | `population_mix` | weights for role selection when generating home-area inhabitants |
 
 ### Cross-reference conventions
