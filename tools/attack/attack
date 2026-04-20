@@ -1,17 +1,42 @@
 #!/bin/bash
-# attack — TODO: implement (see tools/README.md for the contract)
+# attack — full 5e attack (to-hit, crit, damage) on a target in the room.
+#
+# Contract: tools/README.md. Impl: tools/attack/_impl.py.
 set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
 
 if [ "${1:-}" = "--schema" ]; then
   cat <<'JSON'
 {
   "name": "attack",
-  "description": "TODO: describe what this tool does",
-  "parameters": { "type": "object", "properties": {}, "required": [] }
+  "description": "Make a 5e weapon attack against a target in the current room. Rolls d20 + to-hit vs AC; on hit, rolls damage. Natural 20 crits (damage dice doubled); natural 1 is an auto-miss. On the target's HP dropping to 0, emits a death event.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "target": {
+        "type": "string",
+        "description": "Monster or NPC identifier in the current room: a ref ('monster.wolf'), a short id ('wolf'), or display name ('giant rat'). 'self' / 'player' targets the PC."
+      },
+      "weapon": {
+        "type": "string",
+        "description": "Weapon to attack with. For a PC attacker: an item in inventory, e.g. 'longbow' or 'item.longbow'."
+      },
+      "advantage": {
+        "type": "boolean",
+        "description": "Roll attack with advantage (2d20 keep higher). Defaults to false."
+      },
+      "disadvantage": {
+        "type": "boolean",
+        "description": "Roll attack with disadvantage (2d20 keep lower). Defaults to false."
+      }
+    },
+    "required": ["target", "weapon"]
+  }
 }
 JSON
   exit 0
 fi
 
-echo "attack: not yet implemented" >&2
-exit 2
+exec env PYTHONPATH="$ROOT" python3 "$HERE/_impl.py"

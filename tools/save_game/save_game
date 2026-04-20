@@ -1,17 +1,26 @@
 #!/bin/bash
-# save_game — TODO: implement (see tools/README.md for the contract)
+# save_game — explicit snapshot; state actually persists after every
+# mutation already, so this tool is mostly a UX reassurance hook.
+#
+# Contract: tools/README.md. Impl: tools/save_game/_impl.py.
 set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
 
 if [ "${1:-}" = "--schema" ]; then
   cat <<'JSON'
 {
   "name": "save_game",
-  "description": "TODO: describe what this tool does",
-  "parameters": { "type": "object", "properties": {}, "required": [] }
+  "description": "Flush the run's state to disk and confirm with the run_id + turn number. State already persists atomically after every mutation; this tool exists so the DM can give the player a 'saved at turn N' line on request.",
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
 }
 JSON
   exit 0
 fi
 
-echo "save_game: not yet implemented" >&2
-exit 2
+exec env PYTHONPATH="$ROOT" python3 "$HERE/_impl.py"

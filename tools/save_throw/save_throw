@@ -1,17 +1,46 @@
 #!/bin/bash
-# save_throw — TODO: implement (see tools/README.md for the contract)
+# save_throw — 5e saving-throw resolution (same math as skill_check).
+#
+# Contract: tools/README.md. Impl: tools/save_throw/_impl.py.
 set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
 
 if [ "${1:-}" = "--schema" ]; then
   cat <<'JSON'
 {
   "name": "save_throw",
-  "description": "TODO: describe what this tool does",
-  "parameters": { "type": "object", "properties": {}, "required": [] }
+  "description": "Roll a 5e saving throw: d20 + ability modifier + proficiency (if proficient) vs a DC. save_type may be an ability abbreviation ('wis') or a full phrase ('wisdom save vs fear').",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "save_type": {
+        "type": "string",
+        "description": "Which save. Full phrase ('dexterity save vs trap') or ability ('dex') both accepted."
+      },
+      "dc": {
+        "type": "integer",
+        "description": "Difficulty class for the save."
+      },
+      "proficient": {
+        "type": "boolean",
+        "description": "Add the character's proficiency bonus. Defaults to false."
+      },
+      "advantage": {
+        "type": "boolean",
+        "description": "Roll 2d20 and keep the higher. Defaults to false."
+      },
+      "disadvantage": {
+        "type": "boolean",
+        "description": "Roll 2d20 and keep the lower. Defaults to false."
+      }
+    },
+    "required": ["save_type", "dc"]
+  }
 }
 JSON
   exit 0
 fi
 
-echo "save_throw: not yet implemented" >&2
-exit 2
+exec env PYTHONPATH="$ROOT" python3 "$HERE/_impl.py"

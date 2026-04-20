@@ -1,17 +1,36 @@
 #!/bin/bash
-# cast_spell — TODO: implement (see tools/README.md for the contract)
+# cast_spell — apply a spell's effect (MVP: 5 inline spells).
+#
+# Contract: tools/README.md. Impl: tools/cast_spell/_impl.py.
+# The inline spell table is a placeholder; see the TODO inside _impl.py.
 set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
 
 if [ "${1:-}" = "--schema" ]; then
   cat <<'JSON'
 {
   "name": "cast_spell",
-  "description": "TODO: describe what this tool does",
-  "parameters": { "type": "object", "properties": {}, "required": [] }
+  "description": "Cast a spell on a target. MVP supports: cure_wounds (heal), magic_missile (force damage, auto-hit), shield (self +5 AC), bless (ally buff), guidance (ally +1d4 to next check). A spells.jsonl catalog is pending — for now the table is inline.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "spell": {
+        "type": "string",
+        "enum": ["cure_wounds", "magic_missile", "shield", "bless", "guidance"],
+        "description": "Spell identifier. Use the underscore form."
+      },
+      "target": {
+        "type": "string",
+        "description": "Target identifier. 'self' / 'player' for the caster, or a monster/NPC ref in the current room. Defaults to 'self'."
+      }
+    },
+    "required": ["spell"]
+  }
 }
 JSON
   exit 0
 fi
 
-echo "cast_spell: not yet implemented" >&2
-exit 2
+exec env PYTHONPATH="$ROOT" python3 "$HERE/_impl.py"
