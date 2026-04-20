@@ -1,7 +1,7 @@
-"""Thin wrappers over ROGUEBASH_RUN_DIR / ROGUEBASH_RESOURCES.
+"""Thin wrappers over ROGUEBASH_RUN_DIR / ROGUEBASH_SCENARIOS.
 
 Every mechanics / exploration tool opens with the same few lines:
-read the run-dir and resources paths from env, load character.json,
+read the run-dir and scenarios paths from env, load character.json,
 world.json, graph.json, and (on demand) a catalog file. Centralizing
 that keeps each tool's entrypoint short and the error messages uniform.
 
@@ -42,16 +42,35 @@ def run_dir() -> Path:
     return p
 
 
-def resources_dir() -> Path:
-    """Path to the repo's resources/ catalog directory."""
-    v = os.environ.get("ROGUEBASH_RESOURCES")
+def scenarios_dir() -> Path:
+    """Path to the repo's scenarios/ directory (contains _common/ + scenario dirs)."""
+    v = os.environ.get("ROGUEBASH_SCENARIOS")
     if v:
         p = Path(v)
     else:
-        p = project_root() / "resources"
+        p = project_root() / "scenarios"
     if not p.is_dir():
-        raise RuntimeError(f"resources dir does not exist: {p}")
+        raise RuntimeError(f"scenarios dir does not exist: {p}")
     return p
+
+
+def active_scenario() -> str:
+    """Active scenario: graph.json's top-level 'scenario' > $ROGUEBASH_SCENARIO > 'barrow_swamp'."""
+    try:
+        g = load_graph()
+        name = g.get("scenario")
+        if name:
+            return str(name)
+    except Exception:
+        pass
+    return os.environ.get("ROGUEBASH_SCENARIO") or "barrow_swamp"
+
+
+# Backward-compat shim: the previous name resources_dir() is kept so any
+# late-merging branch doesn't break. It now returns _common, which is the
+# closest analogue.
+def resources_dir() -> Path:
+    return scenarios_dir() / "_common"
 
 
 def read_args() -> dict:

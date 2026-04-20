@@ -8,7 +8,7 @@ prefix, which also makes the runner's tool-discovery loop skip it).
 ## Modules
 
 - **`runtime.py`** — ROGUEBASH env vars (`ROGUEBASH_RUN_DIR`,
-  `ROGUEBASH_RESOURCES`), stdin JSON reader, state-file loaders and
+  `ROGUEBASH_SCENARIOS`), stdin JSON reader, state-file loaders and
   atomic savers. Every tool starts with a call or two here.
 - **`catalogs.py`** — lazy loaders and `lookup(ref)` against
   `resources/*.jsonl`. Used by combat (monster/NPC stats), by

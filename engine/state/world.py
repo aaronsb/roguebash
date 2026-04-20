@@ -40,7 +40,7 @@ _MODES = frozenset({"exploration", "combat"})
 
 
 def _fresh_room_record() -> dict[str, Any]:
-    return {"exits_known": [], "inspected": False, "items_taken": []}
+    return {"exits_known": [], "inspected": False, "items_taken": [], "items_dropped": []}
 
 
 @dataclass
@@ -134,6 +134,17 @@ class World:
         taken = rec.setdefault("items_taken", [])
         if item_ref not in taken:
             taken.append(item_ref)
+
+    def mark_item_dropped(self, item_ref: str, room_id: str | None = None) -> None:
+        """Record that the player dropped `item_ref` into `room_id`.
+
+        Mirror of `mark_item_taken`. Tools that later read a room's
+        contents should union the original `spawns.items` (minus
+        `items_taken`) with `items_dropped` to get the live inventory.
+        """
+        rec = self._ensure(room_id or self.current_room)
+        dropped = rec.setdefault("items_dropped", [])
+        dropped.append(item_ref)  # duplicates allowed: drop same potion twice
 
     def set_mode(self, mode: str) -> None:
         """Switch between exploration and combat overlays.

@@ -29,7 +29,7 @@ cat > /tmp/rb_fight/graph.json <<'JSON'
                 "flags":{}}}}
 JSON
 
-ROGUEBASH_RUN_DIR=/tmp/rb_fight ROGUEBASH_RESOURCES="$PWD/resources" \
+ROGUEBASH_RUN_DIR=/tmp/rb_fight ROGUEBASH_SCENARIOS="$PWD/scenarios" \
   echo '{"target":"giant rat","weapon":"shortsword"}' \
   | ./tools/attack/attack
 # Subsequent invocations will hit the same rat (HP persisted in graph.json).

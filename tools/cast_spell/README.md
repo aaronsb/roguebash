@@ -11,17 +11,17 @@ in `_impl.py`.
 # (assumes /tmp/rb_fight is set up per tools/attack/README.md)
 
 # Heal the PC.
-ROGUEBASH_RUN_DIR=/tmp/rb_fight ROGUEBASH_RESOURCES="$PWD/resources" \
+ROGUEBASH_RUN_DIR=/tmp/rb_fight ROGUEBASH_SCENARIOS="$PWD/scenarios" \
   echo '{"spell":"cure_wounds","target":"self"}' \
   | ./tools/cast_spell/cast_spell
 
 # Damage the giant rat.
-ROGUEBASH_RUN_DIR=/tmp/rb_fight ROGUEBASH_RESOURCES="$PWD/resources" \
+ROGUEBASH_RUN_DIR=/tmp/rb_fight ROGUEBASH_SCENARIOS="$PWD/scenarios" \
   echo '{"spell":"magic_missile","target":"giant rat"}' \
   | ./tools/cast_spell/cast_spell
 
 # Apply a status effect.
-ROGUEBASH_RUN_DIR=/tmp/rb_fight ROGUEBASH_RESOURCES="$PWD/resources" \
+ROGUEBASH_RUN_DIR=/tmp/rb_fight ROGUEBASH_SCENARIOS="$PWD/scenarios" \
   echo '{"spell":"shield"}' \
   | ./tools/cast_spell/cast_spell
 ```

@@ -30,7 +30,7 @@ Each adapter is a directory `adapters/<name>/` containing an executable
 | `ROGUEBASH_USER_MESSAGE` | the player's input for this turn |
 | `ROGUEBASH_TOOLS_DIR` | absolute path to `tools/` (MCP-shaped scripts) |
 | `ROGUEBASH_RUN_DIR` | absolute path to the XDG run dir |
-| `ROGUEBASH_RESOURCES` | absolute path to `resources/` |
+| `ROGUEBASH_SCENARIOS` | absolute path to `scenarios/` |
 | `ROGUEBASH_MAX_TURNS` | integer cap on tool-call rounds |
 
 The adapter:

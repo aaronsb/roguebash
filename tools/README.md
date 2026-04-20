@@ -15,7 +15,7 @@ registers it automatically.
 
 - `ROGUEBASH_RUN_DIR` — absolute path to the run's XDG directory
   (contains `character.json`, `world.json`, `graph.json`, `ledger.jsonl`)
-- `ROGUEBASH_RESOURCES` — absolute path to the `resources/` directory
+- `ROGUEBASH_SCENARIOS` — absolute path to the `scenarios/` directory
 
 Tools read those envs and mutate state files directly. They do not take
 the run-id as an argument — the environment is authoritative.

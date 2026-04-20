@@ -5,7 +5,7 @@ mutation methods (`take_damage`, `heal`, ...); the dataclass provides
 type-checked accessors around the underlying dict-y JSON.
 
 Inventory items are dicts of shape `{"ref": "item.<id>", "qty": N}` per
-`resources/schema.md`. `add_item` merges on `ref` (so picking up two
+`scenarios/schema.md`. `add_item` merges on `ref` (so picking up two
 torches yields one entry with `qty: 2`), and `remove_item` decrements
 (and deletes the entry at 0).
 """

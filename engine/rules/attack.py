@@ -12,7 +12,7 @@ Inputs:
 
 ``weapon``
     The attack spec. Two flavors are accepted, mirroring
-    ``resources/schema.md`` and ``engine/state/README.md``:
+    ``scenarios/schema.md`` and ``engine/state/README.md``:
 
     * **Statblock style** (monsters / NPCs): has ``to_hit`` as a signed
       string (``"+4"``) or int, and ``damage`` as a dice expression
@@ -104,7 +104,7 @@ def _roll_damage(
     attacker: dict,
     *,
     crit: bool,
-    rng: _random.Random,
+    rng: _random.Random | None = None,
 ) -> dict:
     """Roll damage for this attack.
 
@@ -117,6 +117,7 @@ def _roll_damage(
 
     On crit: dice are rolled twice, the flat modifier is added once.
     """
+    rng = rng or _random.Random()
     damage_type = weapon.get("damage_type")
 
     if "damage" in weapon and weapon["damage"] is not None:

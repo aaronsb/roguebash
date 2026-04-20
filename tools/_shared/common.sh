@@ -2,7 +2,7 @@
 # tools/_shared/common.sh — sourced by every exploration tool.
 #
 # Responsibilities:
-#   - Verify ROGUEBASH_RUN_DIR / ROGUEBASH_RESOURCES are set
+#   - Verify ROGUEBASH_RUN_DIR / ROGUEBASH_SCENARIOS are set
 #   - Compute and export PYTHONPATH so tools can `from engine.state ...`
 #   - Capture stdin into RB_ARGS_JSON
 #   - Provide `rb_run_py <path>` which runs the named python file with
@@ -30,11 +30,17 @@ if [ ! -d "$ROGUEBASH_RUN_DIR" ]; then
   exit 2
 fi
 
-# ROGUEBASH_RESOURCES is optional for some tools (look, move) but we still
-# set a best-effort default so `use`/`examine` can resolve catalogs.
-if [ -z "${ROGUEBASH_RESOURCES:-}" ]; then
-  ROGUEBASH_RESOURCES="$ROGUEBASH_REPO_ROOT/resources"
-  export ROGUEBASH_RESOURCES
+# ROGUEBASH_SCENARIOS points at the scenarios/ directory. Catalog lookup
+# merges $ROGUEBASH_SCENARIOS/_common/*.jsonl with the active scenario's
+# catalogs (rooms/areas/npcs/factions live under the active scenario;
+# monsters/items/hazards live under _common by default).
+#
+# The active scenario name is read from $ROGUEBASH_RUN_DIR/graph.json's
+# top-level "scenario" field; fallback to ROGUEBASH_SCENARIO env var; then
+# the literal "barrow_swamp" if neither is set.
+if [ -z "${ROGUEBASH_SCENARIOS:-}" ]; then
+  ROGUEBASH_SCENARIOS="$ROGUEBASH_REPO_ROOT/scenarios"
+  export ROGUEBASH_SCENARIOS
 fi
 
 # Put the repo root on sys.path so `from engine.state ...` works.

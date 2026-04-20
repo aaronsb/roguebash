@@ -45,7 +45,8 @@ What the player has revealed. The *model reads this every turn.*
     "swamp.boardwalk_gate": {
       "exits_known": ["north"],
       "inspected": false,
-      "items_taken": []
+      "items_taken": [],
+      "items_dropped": []
     }
   },
   "turn": 7

@@ -1,8 +1,10 @@
 """Catalog lookups by ref.
 
-`resources/*.jsonl` are loaded lazily on first call and cached for the
-life of the Python process (each tool invocation is its own process,
-so caching is scoped correctly).
+Each catalog is a merged view: entries from
+``scenarios/_common/<name>.jsonl`` are overlaid by
+``scenarios/<active>/<name>.jsonl`` so the active scenario's entries
+win on id collision. Results are cached for the life of the Python
+process.
 
 Public surface:
     lookup(ref)        -> dict | None    # any ref, auto-routed by prefix
@@ -46,19 +48,28 @@ def _load_jsonl(path: Path) -> dict[str, dict]:
     return out
 
 
+def _merged(name: str) -> dict[str, dict]:
+    """Merge _common then active-scenario catalog for <name>.jsonl."""
+    scenarios = _rt.scenarios_dir()
+    active = _rt.active_scenario()
+    merged = _load_jsonl(scenarios / "_common" / f"{name}.jsonl")
+    merged.update(_load_jsonl(scenarios / active / f"{name}.jsonl"))
+    return merged
+
+
 @lru_cache(maxsize=1)
 def _items() -> dict[str, dict]:
-    return _load_jsonl(_rt.resources_dir() / "items.jsonl")
+    return _merged("items")
 
 
 @lru_cache(maxsize=1)
 def _monsters() -> dict[str, dict]:
-    return _load_jsonl(_rt.resources_dir() / "monsters.jsonl")
+    return _merged("monsters")
 
 
 @lru_cache(maxsize=1)
 def _npcs() -> dict[str, dict]:
-    return _load_jsonl(_rt.resources_dir() / "npcs.jsonl")
+    return _merged("npcs")
 
 
 def lookup_item(ref: str) -> dict | None:
