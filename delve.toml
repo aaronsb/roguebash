@@ -1,0 +1,17 @@
+# roguebash configuration.
+#
+# Copy to $XDG_CONFIG_HOME/roguebash/delve.toml for user-level settings,
+# or leave here in the repo for project-level defaults. CLI flags always
+# override both.
+
+[agent]
+# Which adapter under adapters/ to invoke for the DM brain.
+adapter = "local"
+# Cap on tool-call rounds per turn (prevents runaway loops).
+max_turns = 12
+
+[generator]
+# Default scenario for `delve new` (use "random" to pick one by seed).
+default_scenario = "barrow_swamp"
+# Target number of macro area-nodes per run.
+default_macro_nodes = 10
