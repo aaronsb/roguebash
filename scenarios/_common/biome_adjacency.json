@@ -1,0 +1,14 @@
+{
+  "description": "Cost of stepping from biome A to biome B during macro-level path finding. Lower = more thematically / geologically adjacent. Self-distance is 0; 1 is for biome *pairs so close the same step can be in both* (there's no room authored to bridge them); 2 is adjacent but with a visible seam (a bridged pair — a transition room is authored); 3 is distant; 4 is opposite extremes. The cost > 1 threshold drives transition-room insertion, so the 8 authored transition pairs (forest↔swamp, swamp↔ruin, ruin↔tomb, urban↔ruin, mountain↔cavern, cavern↔tomb, desert↔ruin, forest↔mountain) are all cost 2 — the seam is real enough that a bridging room reads naturally, but adjacency sampling still prefers these over cost-3 or cost-4 jumps. swamp↔desert (moisture extreme) is cost 4. The matrix is symmetric by construction.",
+  "biomes": ["forest", "swamp", "desert", "mountain", "cavern", "tomb", "urban", "ruin"],
+  "matrix": {
+    "forest":   {"forest": 0, "swamp": 2, "desert": 3, "mountain": 2, "cavern": 2, "tomb": 3, "urban": 1, "ruin": 2},
+    "swamp":    {"forest": 2, "swamp": 0, "desert": 4, "mountain": 3, "cavern": 2, "tomb": 2, "urban": 3, "ruin": 2},
+    "desert":   {"forest": 3, "swamp": 4, "desert": 0, "mountain": 2, "cavern": 3, "tomb": 2, "urban": 3, "ruin": 2},
+    "mountain": {"forest": 2, "swamp": 3, "desert": 2, "mountain": 0, "cavern": 2, "tomb": 2, "urban": 3, "ruin": 2},
+    "cavern":   {"forest": 2, "swamp": 2, "desert": 3, "mountain": 2, "cavern": 0, "tomb": 2, "urban": 3, "ruin": 2},
+    "tomb":     {"forest": 3, "swamp": 2, "desert": 2, "mountain": 2, "cavern": 2, "tomb": 0, "urban": 2, "ruin": 2},
+    "urban":    {"forest": 1, "swamp": 3, "desert": 3, "mountain": 3, "cavern": 3, "tomb": 2, "urban": 0, "ruin": 2},
+    "ruin":     {"forest": 2, "swamp": 2, "desert": 2, "mountain": 2, "cavern": 2, "tomb": 2, "urban": 2, "ruin": 0}
+  }
+}

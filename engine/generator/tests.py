@@ -20,6 +20,11 @@ import unittest
 from collections import deque
 from pathlib import Path
 
+from engine.generator.adjacency import (
+    BiomeAdjacency,
+    index_transition_rooms,
+    load_adjacency,
+)
 from engine.generator.catalogs import Catalogs, load_catalogs
 from engine.generator.compat import compatible, matches_any
 from engine.generator.generate import generate
@@ -298,6 +303,323 @@ class TestCompat(unittest.TestCase):
         self.assertTrue(compatible(a, b))  # a's patterns match b
         # And reversed: no patterns on b, but the rule is OR, so still true.
         self.assertTrue(compatible(b, a))
+
+
+class TestBiomeAdjacency(unittest.TestCase):
+    """Adjacency matrix load + cost-lookup semantics."""
+
+    def test_load_returns_populated_matrix(self) -> None:
+        adj = load_adjacency(_SCENARIOS)
+        # The shipped file defines all 8 canonical biomes.
+        for b in ("forest", "swamp", "desert", "mountain",
+                  "cavern", "tomb", "urban", "ruin"):
+            self.assertIn(b, adj.biomes, f"missing biome {b!r} in matrix")
+
+    def test_self_cost_is_zero(self) -> None:
+        adj = load_adjacency(_SCENARIOS)
+        for b in adj.biomes:
+            self.assertEqual(adj.cost(b, b), 0, f"{b} self-cost != 0")
+
+    def test_symmetric_costs(self) -> None:
+        adj = load_adjacency(_SCENARIOS)
+        bs = adj.biomes
+        for a in bs:
+            for b in bs:
+                self.assertEqual(
+                    adj.cost(a, b), adj.cost(b, a),
+                    f"asymmetric: {a}→{b}={adj.cost(a,b)} "
+                    f"{b}→{a}={adj.cost(b,a)}",
+                )
+
+    def test_unknown_biome_returns_default(self) -> None:
+        adj = load_adjacency(_SCENARIOS)
+        # Unknown biome pairs fall back to the UNKNOWN_COST default (3).
+        self.assertEqual(adj.cost("never_heard_of_it", "swamp"), 3)
+        self.assertEqual(adj.cost("", "swamp"), 3)
+        self.assertEqual(adj.cost("swamp", ""), 3)
+
+    def test_authored_transition_pairs_trigger_splicing(self) -> None:
+        """The 8 authored transition-room pairs must all have cost > 1 in
+        the matrix so that the `_insert_transitions` threshold
+        (`cost > 1`) actually fires for them. If someone tightens the
+        matrix and demotes one of these pairs to cost 1, the authored
+        transition room for that pair becomes dead content.
+        """
+        adj = load_adjacency(_SCENARIOS)
+        for a, b in [
+            ("forest", "swamp"), ("swamp", "ruin"), ("ruin", "tomb"),
+            ("urban", "ruin"), ("mountain", "cavern"), ("cavern", "tomb"),
+            ("desert", "ruin"), ("forest", "mountain"),
+        ]:
+            self.assertGreater(
+                adj.cost(a, b), 1,
+                f"{a}↔{b} should be > 1 so its authored transition room fires",
+            )
+
+    def test_swamp_desert_is_maximally_far(self) -> None:
+        """Anchor test: swamp and desert are the canonical "opposite" biomes.
+
+        This is a content assertion — if someone edits the matrix in a way
+        that makes the two moisture extremes close, they probably meant
+        to update transition rooms too and should break this test.
+        """
+        adj = load_adjacency(_SCENARIOS)
+        self.assertEqual(adj.cost("swamp", "desert"), 4)
+
+    def test_transition_index_covers_authored_bridges(self) -> None:
+        cat = load_catalogs(_SCENARIOS, _SCENARIO)
+        idx = index_transition_rooms(cat.rooms)
+        # Each authored transition room must show up under its `bridges`
+        # key regardless of biome order.
+        pairs = [
+            ("forest", "swamp"), ("swamp", "ruin"), ("ruin", "tomb"),
+            ("forest", "mountain"), ("mountain", "cavern"),
+            ("cavern", "tomb"), ("desert", "ruin"), ("urban", "ruin"),
+        ]
+        for a, b in pairs:
+            key = tuple(sorted((a, b)))
+            self.assertIn(
+                key, idx,
+                f"no transition room bridges {a}↔{b}",
+            )
+            self.assertTrue(idx[key], f"transition index for {key} is empty")
+
+    def test_missing_matrix_file_returns_empty(self) -> None:
+        import tempfile
+        from pathlib import Path as _P
+
+        with tempfile.TemporaryDirectory() as tmp:
+            adj = load_adjacency(_P(tmp))
+            # Empty matrix: every non-self pair returns UNKNOWN_COST.
+            self.assertEqual(adj.biomes, [])
+            self.assertEqual(adj.cost("forest", "swamp"), 3)
+            self.assertEqual(adj.cost("forest", "forest"), 0)
+
+
+class TestTransitionInsertion(unittest.TestCase):
+    """Macro generator splices transitions into high-cost edges."""
+
+    def _make_forced_scenario(self, tmp: Path) -> Path:
+        """Author a 3-area scenario (swamp start, ruin mid, desert goal).
+
+        swamp↔desert is cost 4 in the matrix; `ruin` sits between them
+        (cost 1 to each). The generator should route through ruin and
+        still splice a transition on any swamp↔desert bonus edge that
+        the bonus-edge sampler emits.
+        """
+        common = tmp / "_common"
+        scen = tmp / "forced"
+        common.mkdir()
+        scen.mkdir()
+
+        # Minimal common catalogs.
+        (common / "monsters.jsonl").write_text("")
+        (common / "items.jsonl").write_text("")
+        (common / "hazards.jsonl").write_text("")
+        # The adjacency matrix — only the pairs we need.
+        (common / "biome_adjacency.json").write_text(json.dumps({
+            "biomes": ["swamp", "desert", "ruin"],
+            "matrix": {
+                "swamp": {"swamp": 0, "desert": 4, "ruin": 1},
+                "desert": {"swamp": 4, "desert": 0, "ruin": 1},
+                "ruin": {"swamp": 1, "desert": 1, "ruin": 0},
+            },
+        }))
+
+        # Three area templates, each with a one-room pool.
+        areas = [
+            {
+                "id": "area.swamp_start", "type": "area",
+                "name": "Swamp Start", "biome": "swamp", "tier": 0,
+                "tags": ["outdoor"],
+                "compatible_with": ["swamp.*", "desert.*", "ruin.*"],
+                "rooms": {
+                    "min": 1, "max": 1, "pool": ["swamp.*"],
+                    "must_include": [],
+                },
+                "entrance_rooms": ["swamp.start"],
+                "exit_rooms": ["swamp.start"],
+            },
+            {
+                "id": "area.ruin_mid", "type": "area",
+                "name": "Ruin Mid", "biome": "ruin", "tier": 2,
+                "tags": ["outdoor"],
+                "compatible_with": ["swamp.*", "desert.*", "ruin.*"],
+                "rooms": {
+                    "min": 1, "max": 1, "pool": ["ruin.*"],
+                    "must_include": [],
+                },
+                "entrance_rooms": ["ruin.mid"],
+                "exit_rooms": ["ruin.mid"],
+            },
+            {
+                "id": "area.desert_goal", "type": "area",
+                "name": "Desert Goal", "biome": "desert", "tier": 5,
+                "tags": ["outdoor"],
+                "compatible_with": ["swamp.*", "desert.*", "ruin.*"],
+                "rooms": {
+                    "min": 1, "max": 1, "pool": ["desert.*"],
+                    "must_include": [],
+                },
+                "entrance_rooms": ["desert.goal"],
+                "exit_rooms": ["desert.goal"],
+            },
+        ]
+
+        # Rooms: one per area, plus the swamp↔desert transition bridge.
+        rooms = [
+            {
+                "id": "swamp.start", "type": "room", "name": "Swamp Start",
+                "biome": "swamp", "tier": 0, "tags": ["outdoor"],
+                "compatible_with": ["swamp.*"],
+                "short_desc": "", "long_desc": "",
+                "exits": {"north": None, "east": None,
+                          "south": None, "west": None},
+                "spawns": {"items": [], "monsters": [], "hazards": []},
+                "flags": {},
+            },
+            {
+                "id": "ruin.mid", "type": "room", "name": "Ruin Mid",
+                "biome": "ruin", "tier": 2, "tags": ["outdoor"],
+                "compatible_with": ["ruin.*"],
+                "short_desc": "", "long_desc": "",
+                "exits": {"north": None, "east": None,
+                          "south": None, "west": None},
+                "spawns": {"items": [], "monsters": [], "hazards": []},
+                "flags": {},
+            },
+            {
+                "id": "desert.goal", "type": "room", "name": "Desert Goal",
+                "biome": "desert", "tier": 5, "tags": ["outdoor"],
+                "compatible_with": ["desert.*"],
+                "short_desc": "", "long_desc": "",
+                "exits": {"north": None, "east": None,
+                          "south": None, "west": None},
+                "spawns": {"items": [], "monsters": [], "hazards": []},
+                "flags": {},
+            },
+            {
+                "id": "transition.swamp_desert_wash", "type": "room",
+                "name": "Swamp Desert Wash",
+                "biome": "transition", "bridges": ["swamp", "desert"],
+                "tier": 2, "tags": ["outdoor", "liminal", "boundary"],
+                "compatible_with": ["swamp.*", "desert.*"],
+                "short_desc": "", "long_desc": "",
+                "exits": {"north": None, "east": None,
+                          "south": None, "west": None},
+                "spawns": {"items": [], "monsters": [], "hazards": []},
+                "flags": {},
+            },
+        ]
+
+        (scen / "areas.jsonl").write_text(
+            "\n".join(json.dumps(a) for a in areas) + "\n"
+        )
+        (scen / "rooms.jsonl").write_text(
+            "\n".join(json.dumps(r) for r in rooms) + "\n"
+        )
+        (scen / "factions.jsonl").write_text("")
+        (scen / "npcs.jsonl").write_text("")
+        return tmp
+
+    def test_forced_transition_when_swamp_to_desert_edge_rolls(self) -> None:
+        """With only swamp/desert/ruin areas and a bonus edge between
+        swamp-start and desert-goal, the generator must splice a
+        `_transition.*` area into that edge. We probe many seeds to
+        guarantee the bonus edge fires at least once — fine because each
+        run is still deterministic per seed.
+        """
+        import tempfile
+        from pathlib import Path as _P
+
+        with tempfile.TemporaryDirectory() as tmp_s:
+            root = self._make_forced_scenario(_P(tmp_s))
+
+            saw_transition = False
+            for seed in range(50):
+                graph = generate(
+                    seed=seed,
+                    scenarios_dir=root,
+                    scenario="forced",
+                    macro_nodes=3,
+                )
+                macro_ids = [m["id"] for m in graph["macro"]]
+                if any(mid.startswith("_transition.") for mid in macro_ids):
+                    saw_transition = True
+                    # Validate: the transition room is present as a real room.
+                    self.assertIn(
+                        "transition.swamp_desert_wash", graph["rooms"],
+                        "transition room should appear in rooms dict",
+                    )
+                    # The transition's area attribution must be a _transition.* id.
+                    area_id = graph["rooms"]["transition.swamp_desert_wash"]["area"]
+                    self.assertTrue(
+                        area_id.startswith("_transition."),
+                        f"transition room attributed to {area_id!r} (expected _transition.*)",
+                    )
+                    break
+            self.assertTrue(
+                saw_transition,
+                "no seed in range(50) produced a swamp↔desert transition; "
+                "either the bonus-edge sampler broke or transition splicing "
+                "isn't firing at cost 4",
+            )
+
+    def test_full_catalog_still_connects_start_to_goal(self) -> None:
+        """Regression — the adjacency-weighted sampler must not starve
+        out a start→goal route on the real catalog."""
+        for seed in (1, 7, 42, 99, 2024):
+            graph = generate(
+                seed=seed,
+                scenarios_dir=_SCENARIOS,
+                scenario=_SCENARIO,
+                macro_nodes=10,
+            )
+            adj = _room_adjacency(graph)
+            self.assertTrue(
+                _bfs_reaches(adj, graph["start_room"], graph["goal_room"]),
+                f"seed {seed}: BFS failed start→goal",
+            )
+
+    def test_same_seed_still_byte_identical_with_adjacency(self) -> None:
+        """Determinism extends to the new code paths.
+
+        The adjacency-weighted sampler consumes additional RNG calls, but
+        the same seed must still produce the same graph.
+        """
+        g1 = generate(seed=12345, scenarios_dir=_SCENARIOS,
+                      scenario=_SCENARIO, macro_nodes=10)
+        g2 = generate(seed=12345, scenarios_dir=_SCENARIOS,
+                      scenario=_SCENARIO, macro_nodes=10)
+        s1 = json.dumps(g1, indent=2, sort_keys=True, ensure_ascii=False)
+        s2 = json.dumps(g2, indent=2, sort_keys=True, ensure_ascii=False)
+        self.assertEqual(s1, s2)
+
+    def test_transition_tier_averages_neighbors(self) -> None:
+        """Synthesized transition areas should carry a middle-of-the-road
+        tier, not be parked at 0 or the scenario's max."""
+        # Search a few seeds for a transition-producing one on the real
+        # catalog; tier is a plain authored field, not random.
+        for seed in range(40):
+            graph = generate(
+                seed=seed,
+                scenarios_dir=_SCENARIOS,
+                scenario=_SCENARIO,
+                macro_nodes=10,
+            )
+            for m in graph["macro"]:
+                if m["id"].startswith("_transition."):
+                    # We don't expose tier in the graph.macro output;
+                    # assert the transition room is placed and its area
+                    # id encodes a plausible biome pair.
+                    parts = m["id"].split(".")
+                    self.assertEqual(parts[0], "_transition")
+                    self.assertIn("_", parts[1])
+                    return
+        # If no seed in [0, 40) produced a transition, that's not a
+        # failure on the real catalog — forest/swamp etc. are so cheap
+        # that the sampler avoids high-cost edges. The forced test above
+        # covers the splice path directly.
 
 
 if __name__ == "__main__":

@@ -6,8 +6,15 @@ Pipeline:
 3. Connect pairs whose `compatible_with` patterns match (see compat.py).
    Every non-start node gets at least one edge to a previously-placed
    node with lower-or-equal tier, so the graph is laid out as a ramp
-   rather than a random blob.
-4. Verify BFS(start, goal) succeeds — retry with reshuffled picks if not.
+   rather than a random blob. When an adjacency matrix is available,
+   edge candidates are **weighted by biome-distance** (lower cost =
+   higher probability) so the run's biome arc curves rather than jumps.
+4. Splice synthetic **transition areas** into any remaining high-cost
+   edges (biome distance > 1): the macro generator inserts a one-room
+   area that bridges the two biomes via a `transition.*` room authored
+   in `rooms.jsonl`. Keeps biome sequences reading as a gradient instead
+   of an abrupt cut.
+5. Verify BFS(start, goal) succeeds — retry with reshuffled picks if not.
 
 Determinism: consumes a single seeded `random.Random` and never touches
 the module-level `random`. Every iteration over dicts/sets sorts first.
@@ -19,6 +26,12 @@ import random
 from collections import deque
 from typing import Any
 
+from .adjacency import (
+    BiomeAdjacency,
+    find_transition_room,
+    index_transition_rooms,
+    synthesize_transition_area,
+)
 from .compat import compatible
 
 
@@ -123,18 +136,22 @@ def bfs_path_exists(adj: dict[str, list[str]], start: str, goal: str) -> bool:
 def _build_adjacency(
     selected: list[dict[str, Any]],
     rng: random.Random,
+    adjacency: BiomeAdjacency | None = None,
 ) -> dict[str, list[str]]:
     """Wire the selected areas with compat-respecting edges, ramp-first.
 
     Strategy:
     - Iterate selected areas in the order we picked them (start, then
       middle ramp, then goal).
-    - For each non-first area, connect it to at least one earlier area
-      that passes `compatible(...)`. If no earlier area is compatible,
-      force a connection to the most-recent previous area (keeps the
-      graph connected; documented as a fallback).
-    - Then add a handful of extra compat-passing edges to make the graph
-      less linear. Extras capped to keep things simple.
+    - For each non-first area, connect it to one earlier compatible area,
+      **biased toward low biome-adjacency cost**. With an adjacency matrix
+      loaded, the weighted sampler pulls `forest → swamp` over `forest →
+      desert` even when both are compatible; without one (empty matrix
+      fallback), every candidate weighs 1.0 and behavior matches the old
+      shuffle-and-first-pass.
+    - Then add extra compat-passing edges. The bonus-edge probability is
+      itself cost-scaled — low-cost pairs get roughly 2x the chance of a
+      high-cost pair. Keeps the graph interesting without exploding.
     """
     adj: dict[str, list[str]] = {a["id"]: [] for a in selected}
 
@@ -146,30 +163,60 @@ def _build_adjacency(
         if u not in adj[v]:
             adj[v].append(u)
 
+    def biome_cost(a: dict[str, Any], b: dict[str, Any]) -> int:
+        if adjacency is None:
+            return 1
+        return adjacency.cost(str(a.get("biome", "")), str(b.get("biome", "")))
+
+    def _weighted_pick(
+        current: dict[str, Any],
+        candidates: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Pick one candidate with weights ~ 1/(1+cost). Returns None if none compatible.
+
+        Only compatible candidates get positive weight. Iterating in
+        input order + a pre-sorted candidate list keeps the draw
+        deterministic under a fixed rng sequence.
+        """
+        compat_cands = [c for c in candidates if compatible(current, c)]
+        if not compat_cands:
+            return None
+        weights = [1.0 / (1.0 + biome_cost(current, c)) for c in compat_cands]
+        total = sum(weights)
+        if total <= 0:
+            return compat_cands[0]
+        r = rng.random() * total
+        acc = 0.0
+        for cand, w in zip(compat_cands, weights):
+            acc += w
+            if r <= acc:
+                return cand
+        return compat_cands[-1]
+
     # Mandatory spine — every node gets a path back toward start.
     for i in range(1, len(selected)):
         cur = selected[i]
-        # Shuffle the earlier candidates deterministically and pick the
-        # first compatible one.
-        earlier = list(selected[:i])
-        rng.shuffle(earlier)
-        linked = False
-        for prev in earlier:
-            if compatible(cur, prev):
-                add_edge(cur["id"], prev["id"])
-                linked = True
-                break
-        if not linked:
+        # Sort earlier by id for deterministic input to the weighted pick.
+        earlier = sorted(selected[:i], key=lambda a: a["id"])
+        chosen = _weighted_pick(cur, earlier)
+        if chosen is not None:
+            add_edge(cur["id"], chosen["id"])
+        else:
             # Fallback: force-link to previous node so BFS still works.
             add_edge(cur["id"], selected[i - 1]["id"])
 
-    # Bonus edges — for each pair, roll against a modest probability
-    # and add if compatible. Keeps the graph interesting without
-    # blowing up to a clique.
+    # Bonus edges — for each pair, roll a cost-scaled probability and
+    # add if compatible. p = 0.5 / (1 + cost):
+    #   cost 0 → 0.50, cost 1 → 0.25, cost 2 → 0.167, cost 3 → 0.125,
+    #   cost 4 → 0.10.  Keeps the graph interesting but favors low-cost
+    #   connections so biome arcs stay coherent.
     ids = [a["id"] for a in selected]
     for i in range(len(selected)):
         for j in range(i + 2, len(selected)):
-            if rng.random() < 0.25 and compatible(selected[i], selected[j]):
+            a, b = selected[i], selected[j]
+            cost = biome_cost(a, b)
+            p = 0.5 / (1.0 + cost)
+            if rng.random() < p and compatible(a, b):
                 add_edge(ids[i], ids[j])
 
     # Normalize neighbor lists to deterministic order.
@@ -178,16 +225,113 @@ def _build_adjacency(
     return adj
 
 
+def _insert_transitions(
+    selected: list[dict[str, Any]],
+    adj: dict[str, list[str]],
+    adjacency: BiomeAdjacency,
+    transition_index: dict[tuple[str, str], list[dict[str, Any]]],
+    rng: random.Random,
+    verbose_log: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, list[str]], list[dict[str, Any]]]:
+    """Splice synthetic transition areas into high-cost macro edges.
+
+    For each edge `(a, b)` with `adjacency.cost(a.biome, b.biome) > 1`:
+    - if a transition room exists in `transition_index[(a.biome, b.biome)]`,
+      synthesize a one-room area wrapping it, drop the direct edge, and
+      wire `a — transition — b`.
+    - if no transition room is authored for that biome pair, leave the
+      direct edge alone (graceful degradation; pairs we haven't written
+      content for still produce a playable, if jarring, run).
+
+    Returns `(new_selected, new_adj, inserted_areas)`. `inserted_areas`
+    is the list of synthesized area dicts in insertion order; callers
+    may log them or expose them to tests.
+
+    Edges are processed in canonical `(min_id, max_id)` order for
+    determinism.
+    """
+    inserted: list[dict[str, Any]] = []
+    # Freeze the edge list up-front; we're about to mutate `adj`.
+    edges: set[tuple[str, str]] = set()
+    for aid, neigh in adj.items():
+        for nid in neigh:
+            edges.add(tuple(sorted((aid, nid))))
+
+    # Index selected by id for lookups.
+    by_id: dict[str, dict[str, Any]] = {a["id"]: a for a in selected}
+
+    # Sort edges deterministically by the id pair.
+    sequence = 0
+    new_selected = list(selected)
+    for u, v in sorted(edges):
+        area_u = by_id.get(u)
+        area_v = by_id.get(v)
+        if area_u is None or area_v is None:
+            continue
+        bio_u = str(area_u.get("biome", ""))
+        bio_v = str(area_v.get("biome", ""))
+        # Skip self-biome or unknown-biome (no meaningful bridge to build).
+        if not bio_u or not bio_v or bio_u == bio_v:
+            continue
+        cost = adjacency.cost(bio_u, bio_v)
+        if cost <= 1:
+            continue
+        t_room = find_transition_room(transition_index, bio_u, bio_v)
+        if t_room is None:
+            # No authored bridge for this pair; leave the direct edge.
+            continue
+        sequence += 1
+        synth = synthesize_transition_area(area_u, area_v, t_room, sequence)
+        sid = synth["id"]
+        # Splice: drop direct edge u-v, add u-synth and synth-v.
+        if v in adj.get(u, []):
+            adj[u].remove(v)
+        if u in adj.get(v, []):
+            adj[v].remove(u)
+        adj.setdefault(sid, [])
+        if sid not in adj[u]:
+            adj[u].append(sid)
+        if u not in adj[sid]:
+            adj[sid].append(u)
+        if sid not in adj[v]:
+            adj[v].append(sid)
+        if v not in adj[sid]:
+            adj[sid].append(v)
+        new_selected.append(synth)
+        by_id[sid] = synth
+        inserted.append(synth)
+        if verbose_log is not None:
+            verbose_log.append(
+                f"transition: {u}({bio_u}) ↔ {sid} ↔ {v}({bio_v}) "
+                f"via {t_room['id']} (cost {cost})"
+            )
+
+    # Normalize neighbor lists.
+    for k in adj:
+        adj[k] = sorted(adj[k])
+    return new_selected, adj, inserted
+
+
 def build_macro(
     areas: dict[str, dict[str, Any]],
     n_nodes: int,
     rng: random.Random,
+    adjacency: BiomeAdjacency | None = None,
+    rooms: dict[str, dict[str, Any]] | None = None,
+    verbose_log: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, list[str]], str, str]:
     """Return (selected_areas, adjacency, start_id, goal_id).
 
     Retries up to MAX_RETRIES times if BFS(start, goal) fails under the
     current selection. On each retry we reshuffle picks using the same
     rng (so the result still depends only on the original seed).
+
+    With `adjacency` supplied, edge selection is biome-cost-weighted and
+    high-cost edges (> 1) are spliced with transition areas sourced from
+    the `rooms` catalog (via `biome: "transition"` entries).
+
+    `verbose_log` (optional) accumulates human-readable strings for
+    transitions and fallbacks — the caller can emit them on stderr.
     """
     starts = _areas_at_tier_range(areas, 0, 1)
     goals = _areas_at_tier_range(areas, 4, 5)
@@ -202,6 +346,9 @@ def build_macro(
     if max_nodes < 2:
         raise RuntimeError("Catalog has fewer than 2 areas — cannot generate.")
 
+    # Build the transition-room index once per call (cheap).
+    transition_index = index_transition_rooms(rooms or {})
+
     for attempt in range(MAX_RETRIES):
         start = rng.choice(starts)
         goal = rng.choice(goals)
@@ -213,7 +360,15 @@ def build_macro(
             areas, taken, max_nodes - 2, rng, seeded_biomes=seeded_biomes
         )
         selected = [start] + middle + [goal]
-        adj = _build_adjacency(selected, rng)
+        adj = _build_adjacency(selected, rng, adjacency=adjacency)
+        # Splice transitions — only if we have a usable adjacency matrix
+        # and at least one transition room in the catalog. Otherwise
+        # behavior is identical to the pre-adjacency generator.
+        if adjacency is not None and transition_index:
+            selected, adj, _inserted = _insert_transitions(
+                selected, adj, adjacency, transition_index, rng,
+                verbose_log=verbose_log,
+            )
         if bfs_path_exists(adj, start["id"], goal["id"]):
             return selected, adj, start["id"], goal["id"]
 
