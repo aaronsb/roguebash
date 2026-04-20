@@ -14,8 +14,25 @@ and rebuilt top-to-bottom.
 Prerequisites:
 - Python 3.11+ (for `tomllib`)
 - A working agent adapter. Default is `adapters/local/run`, which wraps
-  the sibling [`qwen/agent`](https://github.com/aaronsb/qwen) script
-  talking to a local `llama.cpp-vulkan` server via `askd`.
+  the `agent` script from the sibling
+  [**agent-bash**](https://github.com/aaronsb/agent-bash) project —
+  a bash-first local LLM stack (ask/askd/agent + MCP-shaped tool
+  plugins) built on `llama.cpp-vulkan`. Install it once and roguebash
+  (and anything else you write) can reuse the same DM brain.
+
+### Install the agent (one-time)
+
+```sh
+git clone git@github.com:aaronsb/agent-bash.git ~/Projects/agent-bash
+cd ~/Projects/agent-bash
+ln -s "$PWD/ask"   ~/.local/bin/ask
+ln -s "$PWD/askd"  ~/.local/bin/askd
+ln -s "$PWD/agent" ~/.local/bin/agent
+askd download   # fetches the default GGUF (~21 GB)
+askd start      # starts the llama-server in the background
+```
+
+See the agent-bash README for hardware notes and alternative models.
 
 ```sh
 git clone git@github.com:aaronsb/roguebash.git

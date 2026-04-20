@@ -103,9 +103,9 @@ mutate state; prose is written to `ledger.jsonl` as a `narration` event.
 - `delve show [<run-id>]` — dump character sheet + current room
 - `delve abandon <run-id>` — delete a run
 
-`delve play` internally invokes our `agent` runner (from the sibling
-qwen/ project) with the composed system prompt and the roguebash tool
-directory.
+`delve play` internally invokes the `agent` runner (from the sibling
+[agent-bash](https://github.com/aaronsb/agent-bash) project) with the
+composed system prompt and the roguebash tool directory.
 
 
 ## Pluggable agent adapters
@@ -119,7 +119,7 @@ system prompt, bounded turns, 16k+ context. Agents that don't meet all
 five are excluded by design.
 
 Provided:
-- `adapters/local/run` — wraps the sibling `qwen/agent` script
+- `adapters/local/run` — wraps the [agent-bash](https://github.com/aaronsb/agent-bash) `agent` script
 - `adapters/goose/run` — sketch, not yet functional (awaits an MCP
   bridge from our tools/ to Goose's expected transport)
 
